@@ -1,0 +1,14 @@
+{
+  "extends": "solhint:recommended",
+  "plugins": [],
+  "rules": {
+    "compiler-version": ["error", "0.8.19"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "not-rely-on-time": "off",
+    "no-global-import": "off",
+    "gas-custom-errors": "off",
+    "reason-string": "off",
+    "var-name-mixedcase": "off",
+    "constructor-syntax": "off"
+  }
+} 
