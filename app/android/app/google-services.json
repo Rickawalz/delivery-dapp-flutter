@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "717680788253",
+    "project_id": "delivery-dapp-flutter",
+    "storage_bucket": "delivery-dapp-flutter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:717680788253:android:a5de165629d1e0da44d7f4",
+        "android_client_info": {
+          "package_name": "com.example.delivery_dapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoaL0_rQMyilAsCT5yQqIF2hj27zbsVug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

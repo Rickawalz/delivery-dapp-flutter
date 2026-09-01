@@ -17,3 +17,17 @@ cd blockchain
 npx hardhat run scripts/deploy.ts --network <network-name>
 
 ```
+
+
+go to block chain
+1) npx hardhat node --hostname 0.0.0.0
+2)npx hardhat run scripts/deploy.ts --network localhost 
+
+then go to app for flutter and run this command
+3) flutter run -d chrome --web-browser-flag="--disable-web-security"
+
+
+Account #1: Customer account
+Account #2: Driver account
+Account #3: Another customer
+Account #4: Another driver

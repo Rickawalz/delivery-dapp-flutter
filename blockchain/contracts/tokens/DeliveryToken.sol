@@ -6,65 +6,56 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title DeliveryToken
- * @dev ERC20 token for the delivery dapp
+ * @notice RLE (Reliable Logistics Exchange) token for the delivery dApp ecosystem
+ * @dev ERC20 token with maximum supply cap of 21 million tokens
+ * 
+ * Academic Purpose: Demonstrates capped supply token economics similar to Bitcoin's
+ * fixed supply model, adapted for gig economy delivery rewards.
  */
 contract DeliveryToken is ERC20, Ownable {
-    // Token parameters
-    uint256 public constant INITIAL_SUPPLY = 1000000 * 10**18; // 1 million tokens
-    uint256 public TRANSFER_DELAY = 1 days;
+    /// @notice Maximum supply of RLE tokens (21 million, similar to Bitcoin)
+    uint256 public constant MAX_SUPPLY = 21e6 * 10**18;
     
-    // Mapping to track last transfer timestamp
-    mapping(address => uint256) private _lastTransferTimestamp;
+    /// @notice Emitted when new tokens are minted
+    event TokensMinted(address indexed to, uint256 amount, uint256 totalSupply);
     
-    // Events
-    event TransferDelayUpdated(uint256 newDelay);
-    event TokensMinted(address indexed to, uint256 amount);
-    event TokensBurned(address indexed from, uint256 amount);
-
-    constructor() ERC20("Delivery Token", "DLV") {
+    /**
+     * @notice Initializes the RLE token
+     * @dev Sets token name and symbol, transfers ownership to deployer
+     */
+    constructor() ERC20("Reliable Logistics Exchange", "RLE") {
         _transferOwnership(msg.sender);
-        _mint(msg.sender, INITIAL_SUPPLY);
     }
-
+    
     /**
-     * @dev Override transfer function to add delay
+     * @notice Mints new tokens to specified address
+     * @dev Only owner (reward system) can mint, respects maximum supply cap
+     * @param to Address to receive minted tokens
+     * @param amount Number of tokens to mint (in wei)
      */
-    function transfer(address to, uint256 amount) public virtual override returns (bool) {
-        require(block.timestamp >= _lastTransferTimestamp[msg.sender] + TRANSFER_DELAY, "Transfer delay not met");
-        _lastTransferTimestamp[msg.sender] = block.timestamp;
-        return super.transfer(to, amount);
-    }
-
-    /**
-     * @dev Override transferFrom function to add delay
-     */
-    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) {
-        require(block.timestamp >= _lastTransferTimestamp[from] + TRANSFER_DELAY, "Transfer delay not met");
-        _lastTransferTimestamp[from] = block.timestamp;
-        return super.transferFrom(from, to, amount);
-    }
-
-    /**
-     * @dev Mint new tokens (only owner)
-     */
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) external onlyOwner {
+        // ========== COMPREHENSIVE INPUT VALIDATION ==========
+        require(to != address(0), "DeliveryToken: Mint to zero address");
+        require(to != address(this), "DeliveryToken: Cannot mint to contract");
+        require(amount > 0, "DeliveryToken: Amount must be positive");
+        require(amount <= 1e6 * 10**18, "DeliveryToken: Amount too large (max 1M per mint)");
+        
+        // Supply cap validation
+        require(totalSupply() + amount <= MAX_SUPPLY, "DeliveryToken: Exceeds maximum supply");
+        
+        // Overflow protection
+        require(totalSupply() + amount >= totalSupply(), "DeliveryToken: Supply overflow");
+        
         _mint(to, amount);
-        emit TokensMinted(to, amount);
+        
+        emit TokensMinted(to, amount, totalSupply());
     }
-
+    
     /**
-     * @dev Burn tokens
+     * @notice Returns remaining tokens that can be minted
+     * @return Remaining supply available for minting
      */
-    function burn(uint256 amount) public {
-        _burn(msg.sender, amount);
-        emit TokensBurned(msg.sender, amount);
+    function remainingSupply() external view returns (uint256) {
+        return MAX_SUPPLY - totalSupply();
     }
-
-    /**
-     * @dev Update transfer delay (only owner)
-     */
-    function updateTransferDelay(uint256 newDelay) public onlyOwner {
-        TRANSFER_DELAY = newDelay;
-        emit TransferDelayUpdated(newDelay);
-    }
-} 
+}

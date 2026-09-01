@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'customer/home_screen.dart';
-import 'registration_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:provider/provider.dart';
 import '../../models/user_role.dart';
+import '../../services/blockchain/wallet_service.dart';
+import '../../services/user/user_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final UserRole role;
@@ -15,6 +16,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _secureStorage = const FlutterSecureStorage();
   String _username = '';
   String _password = '';
   bool _isLoading = false;
@@ -22,7 +24,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String roleText = widget.role == UserRole.customer ? 'Customer' : 'Driver';
+    String roleText = widget.role == UserRole.customer
+        ? 'Customer'
+        : widget.role == UserRole.driver
+            ? 'Driver'
+            : 'Administrator';
     return Scaffold(
       appBar: AppBar(
         title: Text('Login as $roleText'),
@@ -37,7 +43,11 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Icon(
-                  widget.role == UserRole.customer ? Icons.person : Icons.local_shipping,
+                  widget.role == UserRole.customer
+                      ? Icons.person
+                      : widget.role == UserRole.driver
+                          ? Icons.local_shipping
+                          : Icons.admin_panel_settings,
                   size: 64,
                   color: Colors.blue,
                 ),
@@ -53,6 +63,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       TextFormField(
+                        initialValue: widget.role == UserRole.customer
+                            ? 'customerTest'
+                            : widget.role == UserRole.driver
+                                ? 'driverTest'
+                                : 'admin',
                         decoration: const InputDecoration(
                           labelText: 'Username',
                           prefixIcon: Icon(Icons.person),
@@ -67,6 +82,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        initialValue: widget.role == UserRole.customer
+                            ? '78910'
+                            : widget.role == UserRole.driver
+                                ? '123456'
+                                : 'admin123',
                         decoration: const InputDecoration(
                           labelText: 'Password',
                           prefixIcon: Icon(Icons.lock),
@@ -102,12 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => RegistrationScreen(role: widget.role),
-                            ),
-                          );
+                          context.go('/register?role=${widget.role.name}');
                         },
                         child: const Text('Don\'t have an account? Register'),
                       ),
@@ -129,40 +144,58 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _error = null;
     });
-    final prefs = await SharedPreferences.getInstance();
-    final users = prefs.getStringList('users') ?? [];
-    final userIndex = users.indexWhere((u) {
-      final uMap = jsonDecode(u);
-      return uMap['username'] == _username && uMap['role'] == widget.role.name;
-    });
-    if (userIndex != -1) {
-      final userMap = jsonDecode(users[userIndex]);
-      if (userMap['password'] == _password) {
-        // Update lastLogin
-        userMap['lastLogin'] = DateTime.now().toIso8601String();
-        users[userIndex] = jsonEncode(userMap);
-        await prefs.setStringList('users', users);
-        // Success: Navigate to dashboard
+
+    try {
+      final userService = context.read<UserService>();
+      final user = await userService.getUser(_username, widget.role);
+      
+      if (user != null && user['password'] == _password) {
+        // Update last login
+        await userService.updateLastLogin(user['id']);
+        
+        // Set current user in UserService
+        userService.setCurrentUser(_username, widget.role);
+        
+        // Auto-connect wallet if private key exists
+        await _autoConnectWallet();
+        
         if (widget.role == UserRole.customer) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const CustomerHomeScreen()),
-            (route) => false,
-          );
+          context.go('/home/customer');
+        } else if (widget.role == UserRole.driver) {
+          context.go('/home/driver');
         } else {
-          // Placeholder for driver dashboard
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Driver dashboard coming soon!'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+          context.go('/home/admin');
         }
         return;
       }
+    } catch (e) {
+      print('Login error: $e');
     }
+    
     setState(() {
       _error = 'Invalid username or password';
       _isLoading = false;
     });
+  }
+
+  Future<void> _autoConnectWallet() async {
+    try {
+      // Check if user has a private key stored
+      final privateKeyKey = 'wallet:$_username:${widget.role.name}';
+      final privateKey = await _secureStorage.read(key: privateKeyKey);
+      
+      if (privateKey != null && privateKey.isNotEmpty) {
+        // Get WalletService from context and connect with private key
+        final walletService = Provider.of<WalletService>(context, listen: false);
+        await walletService.connectWithPrivateKey(privateKey);
+        print('✅ Wallet auto-connected for user: $_username');
+      } else {
+        print('ℹ️ No private key found for user: $_username');
+      }
+    } catch (e) {
+      print('❌ Failed to auto-connect wallet: $e');
+      // Don't show error to user, just log it
+      // User can still use the app without wallet connection
+    }
   }
 } 

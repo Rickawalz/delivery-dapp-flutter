@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'login_screen.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:web3dart/web3dart.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../models/user_role.dart';
+import '../../services/user/user_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
   final UserRole role;
@@ -14,6 +16,8 @@ class RegistrationScreen extends StatefulWidget {
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _secureStorage = const FlutterSecureStorage();
+  final _passwordController = TextEditingController();
   String _username = '';
   String _password = '';
   String _confirmPassword = '';
@@ -26,8 +30,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   String _vehicleType = '';
   String _licenseNumber = '';
   String _preferredPayment = '';
+  String _privateKey = '';
   bool _isLoading = false;
   String? _error;
+  bool _showPrivateKey = false;
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +165,38 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         ),
                       ],
                       const SizedBox(height: 16),
+                      // Private Key Field (Optional)
                       TextFormField(
+                        decoration: InputDecoration(
+                          labelText: 'Private Key (Optional)',
+                          prefixIcon: const Icon(Icons.vpn_key),
+                          suffixIcon: IconButton(
+                            icon: Icon(_showPrivateKey ? Icons.visibility : Icons.visibility_off),
+                            onPressed: () {
+                              setState(() {
+                                _showPrivateKey = !_showPrivateKey;
+                              });
+                            },
+                          ),
+                          helperText: 'Keep this secret; stored locally in secure storage',
+                        ),
+                        obscureText: !_showPrivateKey,
+                        validator: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            // Normalize and validate private key
+                            final normalized = value.startsWith('0x') ? value : '0x$value';
+                            final cleanKey = normalized.substring(2);
+                            if (cleanKey.length != 64 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(cleanKey)) {
+                              return 'Invalid private key format (must be 64 hex characters)';
+                            }
+                          }
+                          return null;
+                        },
+                        onSaved: (value) => _privateKey = value ?? '',
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
                         decoration: const InputDecoration(
                           labelText: 'Password',
                           prefixIcon: Icon(Icons.lock),
@@ -187,7 +224,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Please confirm your password';
                           }
-                          if (value != _password) {
+                          // Get the password field value from the controller
+                          final passwordValue = _passwordController.text;
+                          if (value != passwordValue) {
                             return 'Passwords do not match';
                           }
                           return null;
@@ -231,55 +270,87 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _isLoading = true;
       _error = null;
     });
-    final prefs = await SharedPreferences.getInstance();
-    final users = prefs.getStringList('users') ?? [];
-    // Check if user already exists
-    final exists = users.any((u) {
-      final uMap = jsonDecode(u);
-      return uMap['username'] == _username && uMap['role'] == widget.role.name;
-    });
-    if (exists) {
+
+    try {
+      final userService = context.read<UserService>();
+      
+      // Check if user already exists
+      final exists = await userService.userExists(_username, widget.role);
+      if (exists) {
+        setState(() {
+          _error = 'Username already exists for this role.';
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      // Handle private key if provided
+      String? walletAddress;
+      if (_privateKey.isNotEmpty) {
+        try {
+          // Normalize private key
+          final normalizedKey = _privateKey.startsWith('0x') ? _privateKey : '0x$_privateKey';
+          
+          // Create credentials and extract address
+          final credentials = EthPrivateKey.fromHex(normalizedKey);
+          final address = await credentials.extractAddress();
+          walletAddress = address.hex;
+          
+          // Save private key to secure storage
+          await _secureStorage.write(
+            key: 'wallet:$_username:${widget.role.name}',
+            value: normalizedKey,
+          );
+        } catch (e) {
+          setState(() {
+            _error = 'Invalid private key: ${e.toString()}';
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+      
+      // Create user in Firebase
+      await userService.createUser(
+        username: _username,
+        password: _password,
+        role: widget.role,
+        email: _email,
+        fullName: _fullName,
+        phone: _phone,
+        avatarUrl: _avatarUrl,
+        address: _address,
+        bio: _bio,
+        walletAddress: walletAddress,
+        vehicleType: _vehicleType,
+        licenseNumber: _licenseNumber,
+        preferredPayment: _preferredPayment,
+      );
+
       setState(() {
-        _error = 'Username already exists for this role.';
         _isLoading = false;
       });
-      return;
+
+      if (mounted) {
+        context.go('/login/${widget.role.name}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration successful! Please log in.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Registration failed: ${e.toString()}';
+        _isLoading = false;
+      });
     }
-    final now = DateTime.now().toIso8601String();
-    final userMap = {
-      'username': _username,
-      'password': _password,
-      'role': widget.role.name,
-      'email': _email,
-      'fullName': _fullName,
-      'phone': _phone,
-      'avatarUrl': _avatarUrl,
-      'address': _address,
-      'bio': _bio,
-      'createdAt': now,
-      'lastLogin': '',
-      'status': 'active',
-      if (widget.role == UserRole.driver) ...{
-        'vehicleType': _vehicleType,
-        'licenseNumber': _licenseNumber,
-      },
-      if (widget.role == UserRole.customer) ...{
-        'preferredPayment': _preferredPayment,
-      },
-    };
-    users.add(jsonEncode(userMap));
-    await prefs.setStringList('users', users);
-    setState(() {
-      _isLoading = false;
-    });
-    if (mounted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Registration successful! Please log in.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
+  }
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
   }
 } 

@@ -15,11 +15,11 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      chainId: 5777
+      chainId: 31337
     },
     localhost: {
       url: "http://127.0.0.1:8545",
-      chainId: 5777
+      chainId: 31337
     }
   },
   typechain: {

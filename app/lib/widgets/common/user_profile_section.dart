@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:provider/provider.dart';
 import '../../models/user_role.dart';
+import '../../services/user/user_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
+import 'dart:convert';
 
 class UserProfileSection extends StatefulWidget {
   final String username;
@@ -24,16 +25,41 @@ class _UserProfileSectionState extends State<UserProfileSection> {
   }
 
   Future<void> _loadUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final users = prefs.getStringList('users') ?? [];
-    final found = users.map((u) => jsonDecode(u)).firstWhere(
-      (u) => u['username'] == widget.username && u['role'] == widget.role.name,
-      orElse: () => null,
-    );
-    if (mounted) {
-      setState(() {
-        user = found;
-      });
+    print('🔍 DEBUG: UserProfileSection._loadUser() called for ${widget.username}');
+    try {
+      final userService = context.read<UserService>();
+      final found = await userService.getUser(widget.username, widget.role).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          print('⏰ DEBUG: User fetch timed out after 5 seconds');
+          return null;
+        },
+      );
+      
+      print('✅ DEBUG: User fetch completed: ${found != null ? "found" : "not found"}');
+      
+      if (mounted) {
+        setState(() {
+          user = found ?? {
+            'username': widget.username,
+            'role': widget.role.toString(),
+            'walletAddress': 'N/A',
+            'bio': 'User profile not loaded',
+          };
+        });
+      }
+    } catch (e) {
+      print('❌ ERROR loading user: $e');
+      if (mounted) {
+        setState(() {
+          user = {
+            'username': widget.username,
+            'role': widget.role.toString(),
+            'walletAddress': 'N/A',
+            'bio': 'Error loading profile',
+          };
+        });
+      }
     }
   }
 
@@ -51,6 +77,7 @@ class _UserProfileSectionState extends State<UserProfileSection> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -202,14 +229,17 @@ class _UserProfileSectionState extends State<UserProfileSection> {
             onPressed: () async {
               if (formKey.currentState!.validate()) {
                 formKey.currentState!.save();
-                // Update user in shared_preferences
-                final prefs = await SharedPreferences.getInstance();
-                final users = prefs.getStringList('users') ?? [];
-                final userIndex = users.indexWhere((u) {
-                  final uMap = jsonDecode(u);
-                  return uMap['username'] == user!['username'] && uMap['role'] == user!['role'];
-                });
-                if (userIndex != -1) {
+                try {
+                  final userService = context.read<UserService>();
+                  await userService.updateUser(user!['id'], {
+                    'fullName': fullName,
+                    'email': email,
+                    'phone': phone,
+                    'avatarUrl': avatarUrl,
+                    'address': address,
+                    'bio': bio,
+                  });
+                  
                   final updatedUser = Map<String, dynamic>.from(user!);
                   updatedUser['fullName'] = fullName;
                   updatedUser['email'] = email;
@@ -217,13 +247,15 @@ class _UserProfileSectionState extends State<UserProfileSection> {
                   updatedUser['avatarUrl'] = avatarUrl;
                   updatedUser['address'] = address;
                   updatedUser['bio'] = bio;
-                  users[userIndex] = jsonEncode(updatedUser);
-                  await prefs.setStringList('users', users);
+                  
                   setState(() {
                     user = updatedUser;
                   });
+                  
+                  if (mounted) Navigator.pop(context);
+                } catch (e) {
+                  print('Error updating user: $e');
                 }
-                if (mounted) Navigator.pop(context);
               }
             },
             child: const Text('Save'),
@@ -238,21 +270,20 @@ class _UserProfileSectionState extends State<UserProfileSection> {
     if (result != null && result.files.single.bytes != null) {
       final bytes = result.files.single.bytes!;
       final base64Image = base64Encode(bytes);
-      // Update user in shared_preferences
-      final prefs = await SharedPreferences.getInstance();
-      final users = prefs.getStringList('users') ?? [];
-      final userIndex = users.indexWhere((u) {
-        final uMap = jsonDecode(u);
-        return uMap['username'] == user!['username'] && uMap['role'] == user!['role'];
-      });
-      if (userIndex != -1) {
+      
+      try {
+        final userService = context.read<UserService>();
+        await userService.updateUser(user!['id'], {
+          'avatarBase64': base64Image,
+        });
+        
         final updatedUser = Map<String, dynamic>.from(user!);
         updatedUser['avatarBase64'] = base64Image;
-        users[userIndex] = jsonEncode(updatedUser);
-        await prefs.setStringList('users', users);
         setState(() {
           user = updatedUser;
         });
+      } catch (e) {
+        print('Error updating avatar: $e');
       }
     }
   }

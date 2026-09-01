@@ -1,241 +1,769 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:web3dart/web3dart.dart';
 import 'package:http/http.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:js_util';
+import 'package:crypto/crypto.dart';
+import '../blockchain/metamask_js.dart';
+import '../blockchain/transaction_tracker.dart';
+import '../blockchain/walletconnect_service.dart';
+import 'package:walletconnect_flutter_v2/walletconnect_flutter_v2.dart';
+import '../../utils/allowed_networks.dart';
 
-class ContractService {
+import '../../models/transaction_result.dart';
+import '../../constants/environment.dart';
+
+// AUTO-GENERATED: This IP is automatically updated by deploy-thesis.ts
+// Only used in development mode (Environment.isDevelopment = true)
+const String HARDHAT_RPC_IP = '10.0.2.2';
+
+class ContractService extends ChangeNotifier {
   Web3Client _client;
   late DeployedContract _contract;
   late String _contractAddress;
   late String _rpcUrl;
-  late Credentials _credentials;
+  Credentials? _credentials;
+  String? _walletAddress;
   bool _isInitialized = false;
+  TransactionTracker? _transactionTracker;
+  WalletConnectService? _walletConnectService;
+  
+  // Expose client for NetworkInfoService
+  Web3Client get client => _client;
+  
+  /// Set WalletConnect service (for dependency injection)
+  void setWalletConnectService(WalletConnectService walletConnectService) {
+    _walletConnectService = walletConnectService;
+  }
+  
+  /// Detect which wallet provider is available and connected
+  Future<String> _detectWalletProvider() async {
+    print('🔍 DEBUG: Detecting wallet provider...');
+    
+    // Check if WalletConnect is available and connected
+    if (_walletConnectService != null && _walletConnectService!.isConnected) {
+      print('  ✅ WalletConnect detected and connected');
+      return 'walletconnect';
+    }
+    
+    // Check if MetaMask is available
+    final eth = ethereum;
+    if (eth != null) {
+      try {
+        print('  🔍 Checking MetaMask availability...');
+        // Try to get accounts from MetaMask
+        final accounts = await promiseToFuture<List<dynamic>>(
+          eth.request(RequestArguments(method: 'eth_accounts'))
+        );
+        if (accounts.isNotEmpty) {
+          print('  ✅ MetaMask detected with accounts: ${accounts.length}');
+          return 'metamask';
+        }
+      } catch (e) {
+        print('  ❌ MetaMask check failed: $e');
+      }
+    }
+    
+    print('  ❌ No wallet provider available');
+    throw Exception('No wallet provider available. Please connect MetaMask or use WalletConnect.');
+  }
+  
+  /// Send transaction via WalletConnect
+  Future<String> _sendTransactionViaWalletConnect(Map<String, dynamic> transactionData) async {
+    print('📱 DEBUG: Sending transaction via WalletConnect...');
+    
+    if (_walletConnectService == null || !_walletConnectService!.isConnected) {
+      throw Exception('WalletConnect not available or not connected');
+    }
+    
+    try {
+      // Add timeout to prevent hanging
+      final result = await Future.any([
+        Future(() async {
+          // Get network-appropriate gas settings
+          final chainId = _walletConnectService!.chainId!;
+          final gasSettings = _getGasSettingsForChain(chainId);
+          
+          print('  🔧 Using gas settings for chain $chainId:');
+          print('    - Gas: ${gasSettings['gas']}');
+          print('    - Gas Price: ${gasSettings['gasPrice']}');
+          
+          // Check if session is ready
+          print('  📋 Session details:');
+          print('    - Topic: ${_walletConnectService!.currentSession!.topic}');
+          print('    - Wallet address: ${_walletConnectService!.walletAddress}');
+          print('    - Chain ID: $chainId');
+          
+          // Try the original WalletConnect request method with better error handling
+          final result = await _walletConnectService!.web3App!.request(
+            topic: _walletConnectService!.currentSession!.topic,
+            chainId: 'eip155:$chainId',
+            request: SessionRequestParams(
+              method: 'eth_sendTransaction',
+              params: [
+                {
+                  'from': _walletConnectService!.walletAddress,
+                  'to': transactionData['to'],
+                  'data': transactionData['data'],
+                  'value': transactionData['value'],
+                  'gas': gasSettings['gas'],
+                  'gasPrice': gasSettings['gasPrice'],
+                }
+              ],
+            ),
+          );
+          
+          return result.toString();
+        }),
+        Future.delayed(Duration(seconds: 60), () => throw Exception('WalletConnect transaction timeout after 60 seconds'))
+      ]);
+      
+      print('✅ WalletConnect transaction successful');
+      return result.toString();
+    } catch (e) {
+      print('❌ WalletConnect transaction failed: $e');
+      throw Exception('WalletConnect transaction failed: $e');
+    }
+  }
+  
+  /// Get gas settings appropriate for the given chain
+  Map<String, String> _getGasSettingsForChain(int chainId) {
+    switch (chainId) {
+      case 31337: // Hardhat (Development)
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+      case 11155111: // Sepolia (Testnet)
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+      case 1: // Ethereum Mainnet
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x4a817c800', // 20 gwei (higher for mainnet)
+        };
+      case 137: // Polygon
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+      case 42161: // Arbitrum One
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+      case 10: // Optimism
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+      default:
+        // Default settings for unknown networks
+        print('⚠️ Using default gas settings for unknown chain ID: $chainId');
+        return {
+          'gas': '0x5208', // 21,000 gas
+          'gasPrice': '0x3b9aca00', // 1 gwei
+        };
+    }
+  }
+  
+  /// Send transaction via MetaMask
+  Future<String> _sendTransactionViaMetaMask(Map<String, dynamic> transactionData) async {
+    print('🦊 DEBUG: Sending transaction via MetaMask...');
+    
+    final eth = ethereum;
+    if (eth == null) {
+      throw Exception('MetaMask not available');
+    }
+    
+    try {
+      // Get network-appropriate gas settings
+      final chainId = await _client.getNetworkId();
+      final gasSettings = _getGasSettingsForChain(chainId);
+      
+      print('  🔧 Using gas settings for chain $chainId:');
+      print('    - Gas: ${gasSettings['gas']}');
+      print('    - Gas Price: ${gasSettings['gasPrice']}');
+      
+      // Create complete transaction object with gas settings
+      final completeTransaction = {
+        'from': transactionData['from'] ?? await _getCurrentAccount(),
+        'to': transactionData['to'],
+        'data': transactionData['data'],
+        'value': transactionData['value'],
+        'gas': gasSettings['gas'],
+        'gasPrice': gasSettings['gasPrice'],
+      };
+      
+      final result = await promiseToFuture<String>(
+        eth.request(RequestArguments(
+          method: 'eth_sendTransaction',
+          params: [completeTransaction],
+        ))
+      );
+      
+      print('✅ MetaMask transaction successful');
+      return result;
+    } catch (e) {
+      print('❌ MetaMask transaction failed: $e');
+      throw Exception('MetaMask transaction failed: $e');
+    }
+  }
+  
+  /// Get current account from MetaMask
+  Future<String?> _getCurrentAccount() async {
+    try {
+      final eth = ethereum;
+      if (eth == null) return null;
+      
+      final accounts = await promiseToFuture<List<dynamic>>(
+        eth.request(RequestArguments(method: 'eth_accounts'))
+      );
+      
+      return accounts.isNotEmpty ? accounts.first.toString() : null;
+    } catch (e) {
+      print('Error getting current account: $e');
+      return null;
+    }
+  }
+  
+  /// Check if current network is allowed before transactions
+  Future<void> _checkNetworkAllowed() async {
+    try {
+      final chainId = await _client.getNetworkId();
+      if (!AllowedNetworks.isAllowed(chainId)) {
+        throw Exception(
+          'Network not allowed. Current network: ${AllowedNetworks.nameFor(chainId)} (Chain ID: $chainId). '
+          'Allowed: ${Environment.networkName} (Chain ID: ${Environment.chainId})'
+        );
+      }
+    } catch (e) {
+      throw Exception('Failed to verify network: $e');
+    }
+  }
 
-  ContractService() : _client = Web3Client('http://localhost:8547', Client());
+  ContractService({WalletConnectService? walletConnectService}) 
+      : _walletConnectService = walletConnectService,
+        _client = Web3Client(
+          Environment.isDevelopment 
+              ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+              : Environment.productionRpc,      // Production: Sepolia
+          Client(),
+        );
 
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    print('🔍 DEBUG: ContractService.initialize() called');
+    if (_isInitialized) {
+      print('  ⏭️  Already initialized, skipping');
+      return;
+    }
 
-    // Load RPC URL from environment variables
-    _rpcUrl = dotenv.env['RPC_URL'] ?? 'http://localhost:8547';
+    print('  - Loading RPC URL...');
+    _rpcUrl = Environment.isDevelopment 
+        ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+        : Environment.productionRpc;      // Production: Sepolia
+    print('  - RPC URL: $_rpcUrl');
+    print('  - Environment: ${Environment.isDevelopment ? "Development (Hardhat)" : "Production (Sepolia)"}');
     
-    // Load contract configuration
+    print('  - Loading contract config...');
     await _loadContractConfig();
+    print('  - Contract address loaded: $_contractAddress');
     
     // Update Web3 client with correct RPC URL if different
-    if (_rpcUrl != 'http://localhost:8547') {
+    final expectedRpcUrl = Environment.isDevelopment 
+        ? 'http://$HARDHAT_RPC_IP:8545' 
+        : Environment.productionRpc;
+    
+    if (_rpcUrl != expectedRpcUrl) {
       _client.dispose();
       _client = Web3Client(_rpcUrl, Client());
     }
     
-    // Load contract ABI
+    print('  - Loading contract ABI...');
     final abi = await _loadContractAbi();
+    print('  - ABI loaded, ${abi.length} entries');
     
-    // Initialize contract
+    print('  - Creating contract instance...');
     _contract = DeployedContract(
-      ContractAbi.fromJson(json.encode(abi), 'DeliverySystem'),
+      ContractAbi.fromJson(json.encode(abi), 'SimpleDeliverySystem'),
       EthereumAddress.fromHex(_contractAddress),
     );
+    print('  - Contract instance created');
 
-    // Initialize credentials (for testing, using a private key)
-    _credentials = EthPrivateKey.fromHex('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
+    // Credentials will be set by WalletService when user connects
     
     _isInitialized = true;
+    print('✅ DEBUG: ContractService initialized successfully');
+  }
+
+  void setCredentials(Credentials credentials, String walletAddress) {
+    _credentials = credentials;
+    _walletAddress = walletAddress;
+  }
+
+  void setTransactionTracker(TransactionTracker tracker) {
+    _transactionTracker = tracker;
+  }
+
+  /// Wait for transaction receipt with timeout (60 seconds = 30 attempts × 2s)
+  Future<TransactionReceipt> _waitForTransactionReceipt(
+    String txHash,
+    {int maxAttempts = 30}
+  ) async {
+    print('⏳ Waiting for transaction receipt: $txHash');
+    print('   Max wait time: ${maxAttempts * 2} seconds');
+    
+    for (int i = 0; i < maxAttempts; i++) {
+      await Future.delayed(const Duration(seconds: 2));
+      
+      final receipt = await _client.getTransactionReceipt(txHash);
+      if (receipt != null) {
+        print('✅ Transaction mined in block ${receipt.blockNumber}');
+        print('   Gas used: ${receipt.gasUsed}');
+        print('   Status: ${receipt.status == true ? "Success" : "Reverted"}');
+        
+        if (receipt.status != true) {
+          throw Exception('Transaction reverted');
+        }
+        
+        return receipt;
+      }
+      
+      if (i > 0 && i % 5 == 0) {
+        print('   Still waiting... (${i * 2}s elapsed)');
+      }
+    }
+    
+    throw Exception('Transaction timeout after ${maxAttempts * 2} seconds. Transaction may still be pending.');
   }
 
   Future<void> _loadContractConfig() async {
     try {
-      final configString = await rootBundle.loadString('assets/config/contracts.json');
+      // Try to load localhost config first, then fallback to regular config
+      String configString;
+      try {
+        configString = await rootBundle.loadString('assets/config/contracts.localhost.json');
+      } catch (e) {
+        configString = await rootBundle.loadString('assets/config/contracts.json');
+      }
+      
       final config = json.decode(configString);
-      _contractAddress = config['DeliverySystem']['address'];
+      
+      // Handle different config structures and contract names
+      if (config.containsKey('contracts')) {
+        // New format with nested contracts - try both possible names
+        _contractAddress = config['contracts']['SimpleDeliverySystem'] ?? 
+                         config['contracts']['DeliverySystem'];
+      } else {
+        // Old format with direct contract addresses - try both possible names
+        _contractAddress = config['SimpleDeliverySystem'] ?? 
+                          config['DeliverySystem'];
+      }
+      
+      if (_contractAddress == null) {
+        throw Exception('No valid contract address found in configuration');
+      }
     } catch (e) {
       throw Exception('Failed to load contract configuration: $e');
     }
   }
 
-  Future<Map<String, dynamic>> _loadContractAbi() async {
+  Future<List<dynamic>> _loadContractAbi() async {
     try {
-      final abiString = await rootBundle.loadString('assets/abi/DeliverySystem.json');
-      return json.decode(abiString);
+      // Load SimpleDeliverySystem ABI
+      final abiString = await rootBundle.loadString('assets/abi/SimpleDeliverySystem.json');
+      final abiData = json.decode(abiString);
+      
+      // Handle both array format and object format
+      if (abiData is List) {
+        return abiData;
+      } else if (abiData is Map<String, dynamic> && abiData.containsKey('abi')) {
+        return abiData['abi'] as List<dynamic>;
+      } else {
+        throw Exception('Unexpected ABI format: ${abiData.runtimeType}');
+      }
     } catch (e) {
       throw Exception('Failed to load contract ABI: $e');
     }
   }
 
-  Future<String> createDelivery({
-    required String pickupAddress,
-    required String deliveryAddress,
-    required BigInt price,
-    required String description,
+  /// Generate unique delivery ID (bytes32)
+  String _generateDeliveryId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final random = Random().nextInt(999999);
+    final data = '$timestamp-$random-${_walletAddress ?? "unknown"}';
+    final hash = sha256.convert(utf8.encode(data)).toString();
+    return '0x$hash';
+  }
+
+  /// Convert hex string to bytes for bytes32 parameter
+  Uint8List _hexToBytes(String hexString) {
+    final hex = hexString.startsWith('0x') ? hexString.substring(2) : hexString;
+    final bytes = Uint8List(32); // bytes32 is always 32 bytes
+    final hexBytes = hex.length ~/ 2;
+    for (int i = 0; i < hexBytes && i < 32; i++) {
+      bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return bytes;
+  }
+
+  Future<DeliveryCreationResult> createDelivery({
+    required String driverAddress,
+    required int distanceMeters,
+    required int fiatAmountCents,
   }) async {
+    print('🔧 ContractService: Initializing...');
     if (!_isInitialized) await initialize();
+    print('✅ ContractService: Initialized');
+
+    // Check network before transaction
+    await _checkNetworkAllowed();
+
+    // Generate unique delivery ID
+    final deliveryId = _generateDeliveryId();
+    final deliveryIdBytes = _hexToBytes(deliveryId);
+
+    print('\n🔍 DEBUG: Pre-transaction checks');
+    print('  - Initialized: $_isInitialized');
+    print('  - Contract address: $_contractAddress');
+    print('  - Has credentials: ${_credentials != null}');
+    print('  - Wallet address: $_walletAddress');
+    print('  - Chain ID check passed');
+
+    print('\n🔍 DEBUG: Transaction parameters');
+    print('  - Delivery ID: $deliveryId');
+    print('  - Driver address: $driverAddress');
+    print('  - Distance meters: $distanceMeters');
+    print('  - Fiat amount cents: $fiatAmountCents');
+    print('  - Delivery ID bytes length: ${deliveryIdBytes.length}');
 
     try {
-      final result = await _client.sendTransaction(
-        _credentials,
-        Transaction.callContract(
-          contract: _contract,
-          function: _contract.function('createDelivery'),
-          parameters: [
-            pickupAddress,
-            deliveryAddress,
-            price,
-            description,
-          ],
-        ),
-      );
+      print('\n🚀 DEBUG: Attempting to send transaction...');
+      
+      final submittedAt = DateTime.now();
+      String txHash;
+      
+      // Detect which wallet provider to use
+      final provider = await _detectWalletProvider();
+      print('  🎯 Using wallet provider: $provider');
+      
+      // Prepare transaction data
+      final function = _contract.function('createDelivery');
+      final encodedData = function.encodeCall([
+        deliveryIdBytes,
+        EthereumAddress.fromHex(driverAddress),
+        BigInt.from(distanceMeters),
+        BigInt.from(fiatAmountCents),
+      ]);
+      
+      // Convert Uint8List to hex string
+      final hexData = '0x${encodedData.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join('')}';
+      
+      final transactionData = {
+        'to': _contractAddress,
+        'data': hexData,
+        'value': '0x0', // No ETH value for this transaction
+        'deliveryId': '0x${deliveryIdBytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join('')}',
+        'driverAddress': driverAddress,
+        'distanceMeters': distanceMeters,
+        'fiatAmountCents': fiatAmountCents,
+      };
+      
+      // Send transaction using the detected provider
+      if (provider == 'walletconnect') {
+        try {
+          txHash = await _sendTransactionViaWalletConnect(transactionData);
+        } catch (e) {
+          print('⚠️ WalletConnect failed, trying MetaMask fallback...');
+          // Try MetaMask as fallback
+          final eth = ethereum;
+          if (eth != null) {
+            try {
+              final accounts = await promiseToFuture<List<dynamic>>(
+                eth.request(RequestArguments(method: 'eth_accounts'))
+              );
+              if (accounts.isNotEmpty) {
+                print('🔄 Falling back to MetaMask...');
+                txHash = await _sendTransactionViaMetaMask(transactionData);
+              } else {
+                rethrow; // Re-throw original WalletConnect error
+              }
+            } catch (fallbackError) {
+              print('❌ MetaMask fallback also failed: $fallbackError');
+              rethrow; // Re-throw original WalletConnect error
+            }
+          } else {
+            rethrow; // Re-throw original WalletConnect error
+          }
+        }
+      } else if (provider == 'metamask') {
+        txHash = await _sendTransactionViaMetaMask(transactionData);
+      } else {
+        throw Exception('Unsupported wallet provider: $provider');
+      }
 
-      return result;
-    } catch (e) {
+      print('\n✅ DEBUG: Transaction submitted successfully!');
+      print('  - Transaction hash: $txHash');
+      print('  - Delivery ID: $deliveryId');
+      
+      // Track transaction if tracker is available
+      if (_transactionTracker != null) {
+        await _transactionTracker!.trackTransaction(
+          txHash: txHash,
+          action: 'createDelivery',
+          providerType: _credentials != null ? 'private_key' : 'metamask',
+        );
+      }
+      
+      // Wait for transaction to be mined
+      final receipt = await _waitForTransactionReceipt(txHash);
+      final minedAt = DateTime.now();
+      
+      // Update transaction tracker with receipt
+      if (_transactionTracker != null) {
+        await _transactionTracker!.updateTransactionWithReceipt(
+          txHash: txHash,
+          receipt: receipt,
+        );
+      }
+      
+      final transactionResult = TransactionResult(
+        txHash: txHash,
+        receipt: receipt,
+        submittedAt: submittedAt,
+        minedAt: minedAt,
+      );
+      
+      return DeliveryCreationResult(
+        deliveryId: deliveryId,
+        transaction: transactionResult,
+      );
+    } catch (e, stackTrace) {
+      print('\n❌ DEBUG: Transaction failed!');
+      print('  - Error type: ${e.runtimeType}');
+      print('  - Error message: $e');
+      print('  - Stack trace: $stackTrace');
       throw Exception('Failed to create delivery: $e');
     }
   }
 
-  Future<String> acceptDelivery(String deliveryId) async {
+  Future<DeliveryCompletionResult> completeDelivery(String deliveryId, int rating) async {
+    print('\n🔍 DEBUG: completeDelivery called');
+    print('  - Delivery ID: $deliveryId');
+    print('  - Rating: $rating');
+    print('  - Has credentials: ${_credentials != null}');
+    
     if (!_isInitialized) await initialize();
+    
+    // Check network before transaction
+    await _checkNetworkAllowed();
 
-    try {
-      final result = await _client.sendTransaction(
-        _credentials,
-        Transaction.callContract(
-          contract: _contract,
-          function: _contract.function('acceptDelivery'),
-          parameters: [deliveryId],
-        ),
-      );
-
-      return result;
-    } catch (e) {
-      throw Exception('Failed to accept delivery: $e');
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      throw Exception('Rating must be between 1 and 5');
     }
-  }
 
-  Future<String> completeDelivery(String deliveryId) async {
-    if (!_isInitialized) await initialize();
+    if (_credentials == null) {
+      throw Exception('No wallet credentials available. Please connect your wallet first.');
+    }
 
     try {
-      final result = await _client.sendTransaction(
-        _credentials,
+      print('🚀 DEBUG: Sending completeDelivery transaction...');
+      
+      final submittedAt = DateTime.now();
+      final deliveryIdBytes = _hexToBytes(deliveryId);
+      
+      final txHash = await _client.sendTransaction(
+        _credentials!,
         Transaction.callContract(
           contract: _contract,
           function: _contract.function('completeDelivery'),
-          parameters: [deliveryId],
+          parameters: [
+            deliveryIdBytes,
+            BigInt.from(rating),
+          ],
         ),
+        chainId: 31337,
       );
 
-      return result;
-    } catch (e) {
+      print('✅ DEBUG: completeDelivery transaction submitted');
+      print('  - Transaction hash: $txHash');
+      
+      // Track transaction if tracker is available
+      if (_transactionTracker != null) {
+        await _transactionTracker!.trackTransaction(
+          txHash: txHash,
+          action: 'completeDelivery',
+          providerType: 'private_key',
+        );
+      }
+      
+      // Wait for transaction to be mined
+      final receipt = await _waitForTransactionReceipt(txHash);
+      final minedAt = DateTime.now();
+      
+      // Update transaction tracker with receipt
+      if (_transactionTracker != null) {
+        await _transactionTracker!.updateTransactionWithReceipt(
+          txHash: txHash,
+          receipt: receipt,
+        );
+      }
+      
+      final transactionResult = TransactionResult(
+        txHash: txHash,
+        receipt: receipt,
+        submittedAt: submittedAt,
+        minedAt: minedAt,
+      );
+      
+      return DeliveryCompletionResult(
+        deliveryId: deliveryId,
+        transaction: transactionResult,
+      );
+    } catch (e, stackTrace) {
+      print('❌ DEBUG: completeDelivery failed');
+      print('  - Error: $e');
+      print('  - Stack trace: $stackTrace');
       throw Exception('Failed to complete delivery: $e');
     }
   }
 
-  Future<String> cancelDelivery(String deliveryId) async {
+  Future<DeliveryCancellationResult> cancelDelivery(String deliveryId, String reason) async {
+    print('\n🔍 DEBUG: cancelDelivery called');
+    print('  - Delivery ID: $deliveryId');
+    print('  - Reason: $reason');
+    
     if (!_isInitialized) await initialize();
+    
+    // Check network before transaction
+    await _checkNetworkAllowed();
+
+    if (_credentials == null) {
+      throw Exception('No wallet credentials available. Please connect your wallet first.');
+    }
 
     try {
-      final result = await _client.sendTransaction(
-        _credentials,
+      print('🚀 DEBUG: Sending cancelDelivery transaction...');
+      
+      final submittedAt = DateTime.now();
+      final deliveryIdBytes = _hexToBytes(deliveryId);
+      
+      final txHash = await _client.sendTransaction(
+        _credentials!,
         Transaction.callContract(
           contract: _contract,
           function: _contract.function('cancelDelivery'),
-          parameters: [deliveryId],
+          parameters: [
+            deliveryIdBytes,
+            reason,
+          ],
         ),
+        chainId: 31337,
       );
 
-      return result;
-    } catch (e) {
+      print('✅ DEBUG: cancelDelivery transaction submitted');
+      print('  - Transaction hash: $txHash');
+      
+      // Track transaction if tracker is available
+      if (_transactionTracker != null) {
+        await _transactionTracker!.trackTransaction(
+          txHash: txHash,
+          action: 'cancelDelivery',
+          providerType: 'private_key',
+        );
+      }
+      
+      // Wait for transaction to be mined
+      final receipt = await _waitForTransactionReceipt(txHash);
+      final minedAt = DateTime.now();
+      
+      // Update transaction tracker with receipt
+      if (_transactionTracker != null) {
+        await _transactionTracker!.updateTransactionWithReceipt(
+          txHash: txHash,
+          receipt: receipt,
+        );
+      }
+      
+      final transactionResult = TransactionResult(
+        txHash: txHash,
+        receipt: receipt,
+        submittedAt: submittedAt,
+        minedAt: minedAt,
+      );
+      
+      return DeliveryCancellationResult(
+        deliveryId: deliveryId,
+        transaction: transactionResult,
+      );
+    } catch (e, stackTrace) {
+      print('❌ DEBUG: cancelDelivery failed');
+      print('  - Error: $e');
+      print('  - Stack trace: $stackTrace');
       throw Exception('Failed to cancel delivery: $e');
     }
   }
 
   Future<Map<String, dynamic>> getDelivery(String deliveryId) async {
+    print('\n🔍 DEBUG: getDelivery called');
+    print('  - Delivery ID: $deliveryId');
+    
     if (!_isInitialized) await initialize();
 
     try {
+      print('📞 DEBUG: Calling getDelivery on contract...');
+      
+      final deliveryIdBytes = _hexToBytes(deliveryId);
+      
       final result = await _client.call(
         contract: _contract,
         function: _contract.function('getDelivery'),
-        params: [deliveryId],
+        params: [deliveryIdBytes],
       );
 
-      return {
-        'id': result[0],
-        'customer': result[1],
-        'courier': result[2],
-        'pickupAddress': result[3],
-        'deliveryAddress': result[4],
-        'price': result[5],
-        'description': result[6],
-        'status': result[7],
-        'createdAt': result[8],
-        'completedAt': result[9],
+      print('✅ DEBUG: getDelivery successful');
+      print('  - Raw result: $result');
+
+      // Contract returns Delivery struct with:
+      // - address customer
+      // - address driver
+      // - uint32 distanceMeters
+      // - uint32 fiatAmountCents
+      // - uint8 rating
+      // - Status status (enum: 0=Created, 1=InProgress, 2=Completed, 3=Cancelled)
+      // - uint64 createdAt
+      // - uint64 completedAt
+
+      final delivery = result[0];
+      
+      final parsed = {
+        'id': deliveryId,
+        'customer': (delivery[0] as EthereumAddress).hex,
+        'driver': (delivery[1] as EthereumAddress).hex,
+        'distanceMeters': (delivery[2] as BigInt).toInt(),
+        'fiatAmountCents': (delivery[3] as BigInt).toInt(),
+        'rating': (delivery[4] as BigInt).toInt(),
+        'status': (delivery[5] as BigInt).toInt(),
+        'createdAt': (delivery[6] as BigInt).toInt(),
+        'completedAt': (delivery[7] as BigInt).toInt(),
       };
-    } catch (e) {
+      
+      print('  - Parsed delivery: $parsed');
+      return parsed;
+    } catch (e, stackTrace) {
+      print('❌ DEBUG: getDelivery failed');
+      print('  - Error: $e');
+      print('  - Stack trace: $stackTrace');
       throw Exception('Failed to get delivery: $e');
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getCustomerDeliveries(String customerAddress) async {
-    if (!_isInitialized) await initialize();
-
-    try {
-      final result = await _client.call(
-        contract: _contract,
-        function: _contract.function('getCustomerDeliveries'),
-        params: [customerAddress],
-      );
-
-      return List<Map<String, dynamic>>.from(
-        result[0].map((delivery) => {
-          'id': delivery[0],
-          'customer': delivery[1],
-          'courier': delivery[2],
-          'pickupAddress': delivery[3],
-          'deliveryAddress': delivery[4],
-          'price': delivery[5],
-          'description': delivery[6],
-          'status': delivery[7],
-          'createdAt': delivery[8],
-          'completedAt': delivery[9],
-        }),
-      );
-    } catch (e) {
-      throw Exception('Failed to get customer deliveries: $e');
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getCourierDeliveries(String courierAddress) async {
-    if (!_isInitialized) await initialize();
-
-    try {
-      final result = await _client.call(
-        contract: _contract,
-        function: _contract.function('getCourierDeliveries'),
-        params: [courierAddress],
-      );
-
-      return List<Map<String, dynamic>>.from(
-        result[0].map((delivery) => {
-          'id': delivery[0],
-          'customer': delivery[1],
-          'courier': delivery[2],
-          'pickupAddress': delivery[3],
-          'deliveryAddress': delivery[4],
-          'price': delivery[5],
-          'description': delivery[6],
-          'status': delivery[7],
-          'createdAt': delivery[8],
-          'completedAt': delivery[9],
-        }),
-      );
-    } catch (e) {
-      throw Exception('Failed to get courier deliveries: $e');
     }
   }
 
   void dispose() {
     _client.dispose();
   }
-} 
+}

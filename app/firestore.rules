@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - basic read/write rules
+    match /users/{userId} {
+      // Allow read/write for authenticated users
+      // For development, we'll allow all access
+      // In production, you'd want more restrictive rules
+      allow read, write: if true;
+    }
+    
+    // Deliveries collection - basic rules
+    match /deliveries/{deliveryId} {
+      allow read, write: if true;
+    }
+  }
+}

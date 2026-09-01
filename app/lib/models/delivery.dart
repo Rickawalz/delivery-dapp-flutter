@@ -1,96 +1,94 @@
 class Delivery {
-  final String id;
-  final String senderAddress;
-  final String receiverAddress;
-  final String description;
-  final double value;
-  final DateTime createdAt;
-  final DeliveryStatus status;
-  final String? courierAddress;
-  final DateTime? estimatedDeliveryTime;
-  final DateTime? actualDeliveryTime;
+  final String id;                  // bytes32 as hex string
+  final String customerAddress;     // address
+  final String driverAddress;       // address
+  final int distanceMeters;         // uint32
+  final int fiatAmountCents;        // uint32
+  final int rating;                 // uint8 (0-5)
+  final DeliveryStatus status;      // enum
+  final DateTime createdAt;         // uint64 timestamp
+  final DateTime? completedAt;      // uint64 timestamp
+  final String? description;        // Optional for UI purposes
 
   Delivery({
     required this.id,
-    required this.senderAddress,
-    required this.receiverAddress,
-    required this.description,
-    required this.value,
-    required this.createdAt,
+    required this.customerAddress,
+    required this.driverAddress,
+    required this.distanceMeters,
+    required this.fiatAmountCents,
+    required this.rating,
     required this.status,
-    this.courierAddress,
-    this.estimatedDeliveryTime,
-    this.actualDeliveryTime,
+    required this.createdAt,
+    this.completedAt,
+    this.description,
   });
 
   factory Delivery.fromJson(Map<String, dynamic> json) {
     return Delivery(
       id: json['id'] as String,
-      senderAddress: json['senderAddress'] as String,
-      receiverAddress: json['receiverAddress'] as String,
-      description: json['description'] as String,
-      value: (json['value'] as num).toDouble(),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      status: DeliveryStatus.values.firstWhere(
-        (e) => e.toString() == json['status'],
-        orElse: () => DeliveryStatus.pending,
-      ),
-      courierAddress: json['courierAddress'] as String?,
-      estimatedDeliveryTime: json['estimatedDeliveryTime'] != null
-          ? DateTime.parse(json['estimatedDeliveryTime'] as String)
+      customerAddress: json['customerAddress'] as String,
+      driverAddress: json['driverAddress'] as String,
+      distanceMeters: json['distanceMeters'] as int,
+      fiatAmountCents: json['fiatAmountCents'] as int,
+      rating: json['rating'] as int,
+      status: DeliveryStatus.values[json['status'] as int],
+      createdAt: DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as int) * 1000),
+      completedAt: json['completedAt'] != null && json['completedAt'] != 0
+          ? DateTime.fromMillisecondsSinceEpoch((json['completedAt'] as int) * 1000)
           : null,
-      actualDeliveryTime: json['actualDeliveryTime'] != null
-          ? DateTime.parse(json['actualDeliveryTime'] as String)
-          : null,
+      description: json['description'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'senderAddress': senderAddress,
-      'receiverAddress': receiverAddress,
+      'customerAddress': customerAddress,
+      'driverAddress': driverAddress,
+      'distanceMeters': distanceMeters,
+      'fiatAmountCents': fiatAmountCents,
+      'rating': rating,
+      'status': status.index,
+      'createdAt': createdAt.millisecondsSinceEpoch ~/ 1000,
+      'completedAt': completedAt != null ? completedAt!.millisecondsSinceEpoch ~/ 1000 : null,
       'description': description,
-      'value': value,
-      'createdAt': createdAt.toIso8601String(),
-      'status': status.toString(),
-      'courierAddress': courierAddress,
-      'estimatedDeliveryTime': estimatedDeliveryTime?.toIso8601String(),
-      'actualDeliveryTime': actualDeliveryTime?.toIso8601String(),
     };
   }
 
   Delivery copyWith({
     String? id,
-    String? senderAddress,
-    String? receiverAddress,
-    String? description,
-    double? value,
-    DateTime? createdAt,
+    String? customerAddress,
+    String? driverAddress,
+    int? distanceMeters,
+    int? fiatAmountCents,
+    int? rating,
     DeliveryStatus? status,
-    String? courierAddress,
-    DateTime? estimatedDeliveryTime,
-    DateTime? actualDeliveryTime,
+    DateTime? createdAt,
+    DateTime? completedAt,
+    String? description,
   }) {
     return Delivery(
       id: id ?? this.id,
-      senderAddress: senderAddress ?? this.senderAddress,
-      receiverAddress: receiverAddress ?? this.receiverAddress,
-      description: description ?? this.description,
-      value: value ?? this.value,
-      createdAt: createdAt ?? this.createdAt,
+      customerAddress: customerAddress ?? this.customerAddress,
+      driverAddress: driverAddress ?? this.driverAddress,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      fiatAmountCents: fiatAmountCents ?? this.fiatAmountCents,
+      rating: rating ?? this.rating,
       status: status ?? this.status,
-      courierAddress: courierAddress ?? this.courierAddress,
-      estimatedDeliveryTime: estimatedDeliveryTime ?? this.estimatedDeliveryTime,
-      actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
+      createdAt: createdAt ?? this.createdAt,
+      completedAt: completedAt ?? this.completedAt,
+      description: description ?? this.description,
     );
   }
+  
+  // Helper getters for UI display
+  double get distanceKm => distanceMeters / 1000.0;
+  double get fiatAmountUSD => fiatAmountCents / 100.0;
 }
 
 enum DeliveryStatus {
-  pending,
-  accepted,
-  inTransit,
-  delivered,
-  cancelled,
-} 
+  created,      // 0
+  inProgress,   // 1
+  completed,    // 2
+  cancelled,    // 3
+}
