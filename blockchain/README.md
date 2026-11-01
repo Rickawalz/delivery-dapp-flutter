@@ -64,7 +64,7 @@ These contracts are not upgradeable. There is no proxy, and the contract address
 
 ## Known prototype limitations
 
-- The Flutter app does not provide a governance interface. It does not show phase status or call `advancePhase`. Creating proposals, delegating, and voting must be done through scripts or an external governor interface.
+- The Flutter app does not provide a complete governance interface. It shows the current phase, controller, and milestone progress, and any connected wallet can trigger advancePhase when milestones are met. Creating proposals, delegating, and voting must be done through scripts or an external governor interface.
 - The Hybrid controller must be a real multisignature wallet (for example a Safe with threshold at least 2) in any production or public-testnet deployment. On localhost it is a single Hardhat test account.
 - Contracts are not upgradeable. Replacing one requires a governance-approved redeployment.
 - Customers confirm deliveries, so colluding accounts (Sybil wallets) could create self-dealing deliveries to earn RLE and inflate milestone metrics. Reward limits slow this per address but do not prevent it across many addresses.

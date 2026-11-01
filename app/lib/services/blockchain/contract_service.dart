@@ -37,6 +37,38 @@ Future<void> loadDevHardhatHost() async {
   }
 }
 
+class PhaseProgress {
+  const PhaseProgress({
+    required this.phase,
+    required this.deliveryPercent,
+    required this.driverPercent,
+    required this.timePercent,
+    required this.stabilityDays,
+    required this.canAdvance,
+  });
+
+  final String phase;
+  final int deliveryPercent;
+  final int driverPercent;
+  final int timePercent;
+  final int stabilityDays;
+  final bool canAdvance;
+}
+
+class PhaseMilestones {
+  const PhaseMilestones({
+    required this.requiredDeliveries,
+    required this.requiredDrivers,
+    required this.requiredDays,
+    required this.requiredStabilityDays,
+  });
+
+  final int requiredDeliveries;
+  final int requiredDrivers;
+  final int requiredDays;
+  final int requiredStabilityDays;
+}
+
 class GasEstimationException implements Exception {
   GasEstimationException(this.message);
   final String message;
@@ -55,6 +87,8 @@ class ContractService extends ChangeNotifier {
   bool _isInitialized = false;
   Map<String, String> _contractAddresses = {};
   TransactionTracker? _transactionTracker;
+  DeployedContract? _phaseContract;
+  String? _phaseAddress;
 
   Map<String, String> get contractAddresses => Map.unmodifiable(_contractAddresses);
   WalletConnectService? _walletConnectService;
@@ -346,6 +380,17 @@ class ContractService extends ChangeNotifier {
     );
     print('  - Contract instance created');
 
+    final phaseAddress = _contractAddresses['DecentralizationPhase'];
+    if (phaseAddress == null || phaseAddress.isEmpty) {
+      throw Exception('DecentralizationPhase address is missing from the contracts config');
+    }
+    _phaseAddress = phaseAddress;
+    final phaseAbi = await _loadAbiAsset('assets/abi/DecentralizationPhase.json');
+    _phaseContract = DeployedContract(
+      ContractAbi.fromJson(json.encode(phaseAbi), 'DecentralizationPhase'),
+      EthereumAddress.fromHex(phaseAddress),
+    );
+
     // Credentials will be set by WalletService when user connects
     
     _isInitialized = true;
@@ -440,22 +485,23 @@ class ContractService extends ChangeNotifier {
     _contractAddresses = next;
   }
 
-  Future<List<dynamic>> _loadContractAbi() async {
+  Future<List<dynamic>> _loadContractAbi() {
+    return _loadAbiAsset('assets/abi/SimpleDeliverySystem.json');
+  }
+
+  Future<List<dynamic>> _loadAbiAsset(String assetPath) async {
     try {
-      // Load SimpleDeliverySystem ABI
-      final abiString = await rootBundle.loadString('assets/abi/SimpleDeliverySystem.json');
+      final abiString = await rootBundle.loadString(assetPath);
       final abiData = json.decode(abiString);
-      
-      // Handle both array format and object format
       if (abiData is List) {
         return abiData;
-      } else if (abiData is Map<String, dynamic> && abiData.containsKey('abi')) {
+      } else if (abiData is Map && abiData['abi'] is List) {
         return abiData['abi'] as List<dynamic>;
       } else {
         throw Exception('Unexpected ABI format: ${abiData.runtimeType}');
       }
     } catch (e) {
-      throw Exception('Failed to load contract ABI: $e');
+      throw Exception('Failed to load contract ABI from $assetPath: $e');
     }
   }
 
@@ -852,6 +898,132 @@ class ContractService extends ChangeNotifier {
       print('  - Stack trace: $stackTrace');
       throw Exception('Failed to get delivery: $e');
     }
+  }
+
+  Future<String> getPhaseInfo() async {
+    if (!_isInitialized) await initialize();
+    final phase = _requirePhase();
+    final result = await _client.call(
+      contract: phase,
+      function: phase.function('currentPhase'),
+      params: [],
+    );
+    return _phaseName(result[0] as BigInt);
+  }
+
+  Future<String> currentController() async {
+    if (!_isInitialized) await initialize();
+    final phase = _requirePhase();
+    final result = await _client.call(
+      contract: phase,
+      function: phase.function('currentController'),
+      params: [],
+    );
+    return (result[0] as EthereumAddress).hex;
+  }
+
+  Future<PhaseProgress> getProgress() async {
+    if (!_isInitialized) await initialize();
+    final phase = _requirePhase();
+    final result = await _client.call(
+      contract: phase,
+      function: phase.function('getProgress'),
+      params: [],
+    );
+    return PhaseProgress(
+      phase: _phaseName(result[0] as BigInt),
+      deliveryPercent: (result[1] as BigInt).toInt(),
+      driverPercent: (result[2] as BigInt).toInt(),
+      timePercent: (result[3] as BigInt).toInt(),
+      stabilityDays: (result[4] as BigInt).toInt(),
+      canAdvance: result[5] as bool,
+    );
+  }
+
+  Future<PhaseMilestones> getCurrentMilestones() async {
+    if (!_isInitialized) await initialize();
+    final phase = _requirePhase();
+    final result = await _client.call(
+      contract: phase,
+      function: phase.function('getCurrentMilestones'),
+      params: [],
+    );
+    return PhaseMilestones(
+      requiredDeliveries: (result[0] as BigInt).toInt(),
+      requiredDrivers: (result[1] as BigInt).toInt(),
+      requiredDays: (result[2] as BigInt).toInt(),
+      requiredStabilityDays: (result[3] as BigInt).toInt(),
+    );
+  }
+
+  Future<String> advancePhase() async {
+    if (!_isInitialized) await initialize();
+    await _checkNetworkAllowed();
+    final phase = _requirePhase();
+    final encoded = phase.function('advancePhase').encodeCall([]);
+    try {
+      final txHash = await _submitCall(
+        to: _phaseAddress!,
+        data: _bytesToHex(encoded),
+      );
+      await _waitForTransactionReceipt(txHash);
+      return txHash;
+    } on GasEstimationException {
+      rethrow;
+    }
+  }
+
+  DeployedContract _requirePhase() {
+    final phase = _phaseContract;
+    if (phase == null || _phaseAddress == null) {
+      throw Exception('DecentralizationPhase is not loaded');
+    }
+    return phase;
+  }
+
+  String _phaseName(BigInt value) {
+    switch (value.toInt()) {
+      case 0:
+        return 'Bootstrap';
+      case 1:
+        return 'Hybrid';
+      case 2:
+        return 'FullDAO';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  String _bytesToHex(List<int> bytes) {
+    return '0x${bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join()}';
+  }
+
+  Future<String> _submitCall({required String to, required String data}) async {
+    final transactionData = {
+      'to': to,
+      'data': data,
+      'value': '0x0',
+    };
+    final provider = await _detectWalletProvider();
+    if (provider == 'walletconnect') {
+      try {
+        return await _sendTransactionViaWalletConnect(transactionData);
+      } on GasEstimationException {
+        rethrow;
+      } catch (e) {
+        final eth = ethereum;
+        if (eth == null) rethrow;
+        final accounts = await promiseToFuture<List<dynamic>>(
+          eth.request(RequestArguments(method: 'eth_accounts'))
+        );
+        if (accounts.isEmpty) rethrow;
+        return _sendTransactionViaMetaMask(transactionData);
+      }
+    }
+    if (provider == 'metamask') {
+      return _sendTransactionViaMetaMask(transactionData);
+    }
+    throw Exception('Unsupported wallet provider: $provider');
   }
 
   void dispose() {

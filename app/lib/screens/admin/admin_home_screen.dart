@@ -11,6 +11,7 @@ import '../../widgets/common/wallet_connect_section.dart';
 import '../../widgets/common/user_profile_section.dart';
 import '../../widgets/common/network_status_widget.dart';
 import '../../widgets/common/navigation_links.dart';
+import '../../widgets/governance/decentralization_panel.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -172,6 +173,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> with TickerProviderSt
             
             // Wallet Connect Section
             WalletConnectSection(),
+
+            const DecentralizationPanel(),
 
             // Tab Content
             SizedBox(

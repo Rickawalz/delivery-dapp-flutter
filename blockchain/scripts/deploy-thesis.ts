@@ -414,8 +414,16 @@ async function main() {
   const abiDest = path.join(__dirname, "../../app/assets/abi/SimpleDeliverySystem.json");
   fs.copyFileSync(abiSource, abiDest);
 
+  const phaseAbiSource = path.join(
+    __dirname,
+    "../artifacts/contracts/governance/DecentralizationPhase.sol/DecentralizationPhase.json"
+  );
+  const phaseAbiDest = path.join(__dirname, "../../app/assets/abi/DecentralizationPhase.json");
+  fs.copyFileSync(phaseAbiSource, phaseAbiDest);
+
   console.log("\n📄 Deployment info saved to:", configPath);
   console.log("📄 SimpleDeliverySystem ABI copied to:", abiDest);
+  console.log("📄 DecentralizationPhase ABI copied to:", phaseAbiDest);
   console.log("\n✅ Thesis demonstration deployment complete!");
   console.log("\n📚 Ready for:");
   console.log("  - Live thesis defense demo");

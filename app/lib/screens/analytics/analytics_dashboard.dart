@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/firestore/analytics_service.dart';
 import '../../services/blockchain/wallet_service.dart';
+import '../../widgets/governance/decentralization_panel.dart';
 
 /// Analytics dashboard to answer the three thesis questions
 class AnalyticsDashboard extends StatefulWidget {
@@ -82,16 +83,23 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> with TickerProv
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTransparencyTab(),
-                _buildUxCostTab(),
-                _buildChallengesTab(),
-              ],
-            ),
+      body: Column(
+        children: [
+          const DecentralizationPanel(),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildTransparencyTab(),
+                      _buildUxCostTab(),
+                      _buildChallengesTab(),
+                    ],
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
