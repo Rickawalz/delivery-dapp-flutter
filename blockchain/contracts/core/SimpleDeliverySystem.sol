@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./BalancedRewardSystem.sol";
 import "./DeliveryTrackingSystem.sol";
 import "./RatingSystem.sol";
@@ -18,7 +17,7 @@ import "../governance/DecentralizationPhase.sol";
  * - Fair reward distribution (RQ2: economics)
  * - Coordinated system operation (RQ3: technical implementation)
  */
-contract SimpleDeliverySystem is Ownable {
+contract SimpleDeliverySystem {
     BalancedRewardSystem public rewardSystem;
     DeliveryTrackingSystem public trackingSystem;
     RatingSystem public ratingSystem;
@@ -88,6 +87,18 @@ contract SimpleDeliverySystem is Ownable {
         address by,
         string reason
     );
+
+    /// @notice Emitted when the controller changes the platform fee
+    event PlatformFeeUpdated(uint256 oldFee, uint256 newFee);
+
+    /// @dev Caller must be the active controller for the current decentralization phase
+    modifier onlyController() {
+        require(
+            msg.sender == decentralizationPhase.currentController(),
+            "DeliverySystem: Not controller"
+        );
+        _;
+    }
     
     /**
      * @notice Initializes the delivery system with all integrated contracts
@@ -111,7 +122,6 @@ contract SimpleDeliverySystem is Ownable {
         trackingSystem = DeliveryTrackingSystem(_trackingSystem);
         ratingSystem = RatingSystem(_ratingSystem);
         decentralizationPhase = DecentralizationPhase(_decentralizationPhase);
-        _transferOwnership(msg.sender);
     }
     
     /**
@@ -185,19 +195,28 @@ contract SimpleDeliverySystem is Ownable {
      * @notice Completes a delivery and mints token reward
      * @dev Triggers balanced reward calculation and minting
      * 
-     * Academic Note: This is where the multi-factor algorithm executes.
-     * In production, this would be called after customer confirmation and payment.
-     * For thesis, demonstrates the reward mechanism.
+     * During Bootstrap the phase controller or the customer may complete.
+     * During Hybrid and FullDAO only the customer may complete.
+     * A disputed delivery cannot be completed in any phase.
      * 
      * @param deliveryId Unique delivery identifier
      * @param rating Customer rating (1-5 stars)
      */
-    function completeDelivery(bytes32 deliveryId, uint8 rating) external onlyOwner {
+    function completeDelivery(bytes32 deliveryId, uint8 rating) external {
         // ========== COMPREHENSIVE INPUT VALIDATION ==========
         require(deliveryId != bytes32(0), "DeliverySystem: Invalid delivery ID");
         require(rating >= 1 && rating <= 5, "DeliverySystem: Rating must be 1-5");
         
         Delivery storage delivery = deliveries[deliveryId];
+        if (decentralizationPhase.isBootstrap()) {
+            require(
+                msg.sender == decentralizationPhase.currentController() || msg.sender == delivery.customer,
+                "DeliverySystem: Not authorized"
+            );
+        } else {
+            require(msg.sender == delivery.customer, "DeliverySystem: Customer confirmation required");
+        }
+        require(!trackingSystem.isDisputed(deliveryId), "DeliverySystem: Delivery is disputed");
         require(delivery.createdAt > 0, "DeliverySystem: Delivery does not exist");
         require(delivery.status == Status.InProgress, "DeliverySystem: Invalid status");
         require(delivery.driver != address(0), "DeliverySystem: Invalid driver");
@@ -302,7 +321,9 @@ contract SimpleDeliverySystem is Ownable {
     function cancelDelivery(bytes32 deliveryId, string memory reason) external {
         Delivery storage delivery = deliveries[deliveryId];
         require(
-            msg.sender == delivery.customer || msg.sender == delivery.driver || msg.sender == owner(),
+            msg.sender == delivery.customer ||
+            msg.sender == delivery.driver ||
+            msg.sender == decentralizationPhase.currentController(),
             "DeliverySystem: Not authorized"
         );
         require(delivery.status == Status.InProgress, "DeliverySystem: Invalid status");
@@ -323,6 +344,53 @@ contract SimpleDeliverySystem is Ownable {
         returns (Delivery memory) 
     {
         return deliveries[deliveryId];
+    }
+
+    /**
+     * @notice Records an incident on the phase contract
+     * @dev Pass-through for the active controller. The phase contract enforces cooldown and cap.
+     * @param description Description of the incident
+     */
+    function recordIncident(string calldata description) external onlyController {
+        decentralizationPhase.recordIncident(description);
+    }
+
+    /**
+     * @notice Clears a dispute on the tracking contract
+     * @param deliveryId Unique delivery identifier
+     */
+    function resolveDispute(bytes32 deliveryId) external onlyController {
+        trackingSystem.resolveDispute(deliveryId);
+    }
+
+    /**
+     * @notice Emergency reward-rate override, available only during Bootstrap
+     * @param newRate New token conversion rate
+     */
+    function emergencyAdjustRewardRate(uint256 newRate) external onlyController {
+        require(decentralizationPhase.isBootstrap(), "DeliverySystem: Bootstrap only");
+        rewardSystem.manualAdjustRate(newRate);
+    }
+
+    /**
+     * @notice Sets the platform fee percentage
+     * @dev Fee cannot exceed 10 percent
+     * @param newFee New fee percentage
+     */
+    function setPlatformFeePercent(uint256 newFee) external onlyController {
+        require(newFee <= 10, "DeliverySystem: Fee exceeds 10");
+        uint256 oldFee = platformFeePercent;
+        platformFeePercent = newFee;
+        emit PlatformFeeUpdated(oldFee, newFee);
+    }
+
+    /**
+     * @notice Sets the reward token rate after Bootstrap
+     * @param newRate New token conversion rate
+     */
+    function setRewardTokenRate(uint256 newRate) external onlyController {
+        require(!decentralizationPhase.isBootstrap(), "DeliverySystem: Not during Bootstrap");
+        rewardSystem.setTokenRate(newRate);
     }
     
     /**

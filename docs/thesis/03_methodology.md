@@ -1,10 +1,12 @@
-# Chapter 3: Methodology
+# Chapter 3: Research Method, Design, and Implementation
+
+This file is the method portion of Chapter 3, as defined in Chapter 1, Section 1.10. Design detail continues in `04_design.md`. Implementation detail continues in `05_implementation.md`. The research questions are RQ1–RQ4 in `01_introduction.md`.
 
 ## 3.1 Research Approach
 
-This research employs a **design science research (DSR)** methodology to develop and evaluate a blockchain-based solution for last-mile delivery challenges. Design science research is particularly appropriate for this study because it focuses on creating and evaluating artifacts—in this case, smart contracts and a tokenomic system—that address identified real-world problems (Hevner et al., 2004). The DSR framework consists of three main cycles: the relevance cycle, which connects the research to the application environment; the design cycle, where artifacts are built and evaluated iteratively; and the rigor cycle, which grounds the research in the existing knowledge base (Hevner, 2007).
+This research employs a **design science research (DSR)** methodology to design, build, and evaluate RLE, a proof-of-concept delivery tracking system. Design science research is appropriate because the study creates and evaluates artifacts—Ethereum smart contracts, a Flutter application, wallet integration, Firestore services, and a milestone contract—against the problem and questions in Chapter 1 (Hevner et al., 2004). The DSR framework consists of three main cycles: the relevance cycle, which connects the research to the application environment; the design cycle, where artifacts are built and evaluated iteratively; and the rigor cycle, which grounds the research in the existing knowledge base (Hevner, 2007).
 
-The relevance cycle begins with the problems identified in Chapter 1: opacity in supply chain tracking exemplified by the Guam container incident, excessive platform fees in centralized delivery systems (25-30%), and the technical challenges of implementing blockchain solutions at scale. These real-world problems provide clear requirements for the artifact to be designed.
+The relevance cycle begins with the problem in Chapter 1: supply chain participants often lack a shared, auditable history of shipment events, and a new logistics network may still need an administrator at launch. The artifact is built to record a simplified delivery lifecycle and to test whether milestone rules and token rewards can support a later transfer of contract control. The Guam example in Section 1.2 is motivation for that problem. It is not a field study, and the thesis does not treat platform-fee reduction as a research question.
 
 The design cycle involves the iterative development of smart contracts, each implementing specific features to address the identified problems. This thesis follows an agile development approach where contracts are designed, implemented, tested, and refined based on test results and gas cost analysis. Each iteration produces a working prototype that can be deployed to a local Ethereum network for evaluation.
 
@@ -12,17 +14,17 @@ The rigor cycle ensures that the design draws upon existing knowledge in blockch
 
 ### 3.1.1 Artifact Development Strategy
 
-The primary artifact of this research is a set of five interconnected smart contracts that collectively implement a decentralized delivery platform. The development follows a bottom-up approach:
+The primary artifact is an integrated proof of concept: Ethereum smart contracts, a Flutter application, wallet connection, and Firebase/Firestore for off-chain application data. The contract set is developed bottom-up:
 
-1. **Foundation Layer**: The DeliveryToken contract implements the basic economic unit of the system—a capped ERC20 token that serves as the reward mechanism.
+1. **Foundation Layer**: The DeliveryToken contract implements the RLE token, a capped ERC20 used as an experimental reward. Fairness of the reward is a question for evaluation, not an assumption of the method.
 
-2. **Core Logic Layer**: The BalancedRewardSystem contract embodies the main academic contribution—a multi-factor algorithm that calculates fair rewards while preventing gaming behavior.
+2. **Core Logic Layer**: The BalancedRewardSystem contract implements a multi-factor reward formula (volume, distance, rating, and diversity) with limits intended to reduce simple manipulation. Section 1.8 treats this formula as exploratory.
 
 3. **Transparency Layer**: The DeliveryTrackingSystem contract provides the immutable tracking capability that addresses the visibility challenges observed in traditional supply chains.
 
 4. **Integration Layer**: The SimpleDeliverySystem contract orchestrates the interaction between all components and manages the delivery lifecycle.
 
-5. **Governance Layer**: The DecentralizationPhase contract implements a milestone-based framework for progressive platform governance.
+5. **Governance Layer**: The DecentralizationPhase contract records participation milestones for the transition described in RQ3. Chapter 3 must state which powers, if any, actually move when a phase advances. Recording a milestone is not the same as transferring administrative authority.
 
 This layered architecture allows each component to be developed, tested, and evaluated independently before integration, following separation of concerns principles common in software engineering (Sommerville, 2015).
 
@@ -38,9 +40,9 @@ The evaluation of the developed artifacts employs a multi-faceted approach:
 
 **Economic Simulation**: A Python-based simulation framework models the behavior of the reward system over time with various user behaviors. This allows evaluation of fairness metrics (Gini coefficient), gaming resistance, and long-term sustainability without requiring real-world deployment.
 
-**Comparative Analysis**: The system is compared against existing centralized platforms (Uber, DoorDash) on key metrics: platform fees, transparency, cost per delivery, and driver compensation.
+**Limitation analysis**: Failed tests, gas measurements, reward simulations, access-control behavior, hash construction, wallet and application friction, and remaining administrator or Firebase control are reported against RQ4. Fee comparisons with commercial platforms may be discussed as context. They are not the research questions in Section 1.7, and Section 1.8 excludes a comparison with proprietary company databases.
 
-This mixed-methods evaluation provides both quantitative data (gas costs, token distribution) and qualitative insights (usability, transparency) necessary for comprehensive assessment.
+This evaluation stays inside a controlled software environment, as delimited in Section 1.8.
 
 ---
 
@@ -505,15 +507,15 @@ This simulation-based evaluation allows testing at scale impossible with blockch
 
 ## 3.4 Methodology Summary
 
-This chapter has described the comprehensive methodology employed to address the research questions posed in Chapter 1:
+This section has described the method used to address RQ1–RQ4:
 
-**Research Approach**: Design science research provides the overarching framework, with artifacts (smart contracts) designed, built, and evaluated iteratively against clearly defined requirements derived from real-world problems.
+**Research approach**: Design science research frames the construction and evaluation of RLE as a proof of concept for auditable delivery records and a code-enforced path from administrator control toward decentralization of the contract layer.
 
-**Technology Selection**: Ethereum and Solidity were chosen for their maturity, security, and tooling ecosystem. Hardhat provides the development environment. OpenZeppelin contracts reduce security risks. Python enables large-scale economic simulation.
+**Technology selection**: Ethereum and Solidity ^0.8.19, Hardhat, OpenZeppelin, Flutter, wallet services, Firebase/Firestore, and a Python simulation support that prototype. Firestore remains an operator-controlled service. Section 2.8 defines full decentralization as the absence of special administrator authority over the contracts, not as decentralization of the cloud services.
 
-**Testing Strategy**: Multi-layered validation includes unit tests (correctness), integration tests (system behavior), gas benchmarking (economic viability), security analysis (vulnerability detection), and economic simulation (fairness and gaming resistance).
+**Testing strategy**: Unit tests, integration scenarios, gas measurements, security analysis, and reward simulations are used to show what the prototype does and where it fails. Conclusions about reward fairness and distributed control are limited to those results.
 
-The next chapter (Chapter 4) will describe the system design and architecture that implements this methodology, detailing the structure of each smart contract and how they interact to form a complete decentralized delivery platform.
+The design of the same chapter continues in `04_design.md`. Implementation continues in `05_implementation.md`. Results and discussion belong in Chapter 4 (`06_evaluation.md` and `07_discussion.md`).
 
 ---
 
@@ -571,5 +573,5 @@ Wood, G. (2014). Ethereum: A secure decentralised generalised transaction ledger
 
 **References**: 25 sources
 
-**Status**: ✅ COMPLETE - Ready for thesis inclusion
+**Status**: Method section of Chapter 3, aligned with Chapters 1 and 2. Design and implementation sections follow.
 

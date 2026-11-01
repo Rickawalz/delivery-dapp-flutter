@@ -566,5 +566,20 @@ contract BalancedRewardSystem is Ownable, ReentrancyGuard {
         
         emit RateAdjusted(newRate, oldRate, 0, "Manual adjustment");
     }
+
+    /**
+     * @notice Governance rate adjustment after Bootstrap
+     * @dev Same bounds as manualAdjustRate. Caller must be the owner (SimpleDeliverySystem).
+     * @param newRate New token conversion rate
+     */
+    function setTokenRate(uint256 newRate) external onlyOwner {
+        require(newRate > 0, "BalancedReward: Rate must be positive");
+        require(newRate <= 10 * 10**18, "BalancedReward: Rate too high");
+
+        uint256 oldRate = currentTokenRate;
+        currentTokenRate = newRate;
+
+        emit RateAdjusted(newRate, oldRate, 0, "Governance adjustment");
+    }
 }
 

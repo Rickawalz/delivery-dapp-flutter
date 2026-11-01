@@ -1,4 +1,8 @@
-# Chapter 4: System Design and Architecture
+# Chapter 3 (continued): System Design and Architecture
+
+This file is the design portion of Chapter 3, as defined in Chapter 1, Section 1.10. The method is in `03_methodology.md`. Implementation is in `05_implementation.md`. Research questions are RQ1–RQ4 in `01_introduction.md`.
+
+Section 2.8 requires this chapter to name the milestones and the powers transferred at each phase. The prototype's `DecentralizationPhase` contract records milestones and lets the owner advance an enum. Advancing the phase does not move `onlyOwner` authority, install a vote, or renounce the administrator. That limit is part of the design being evaluated under RQ3 and RQ4, not a completed handover.
 
 ## 4.1 Overall System Architecture
 
@@ -6,11 +10,11 @@ This section presents the architectural design of the decentralized delivery pla
 
 ### 4.1.1 High-Level Architecture
 
-The system consists of five smart contracts organized into four functional layers, plus an optional frontend application layer for user interaction. Figure 4.1 illustrates the architectural overview:
+The system consists of the thesis contracts plus the Flutter application, wallet integration, and Firestore services required by Chapter 1. Figure 4.1 illustrates the architectural overview:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Frontend Layer (Optional)                     │
+│                    Frontend Layer (Flutter)                        │
 │                     Flutter Web/Mobile App                       │
 │                  (User Interface & Wallet Integration)           │
 └────────────────────────────┬────────────────────────────────────┘
@@ -54,16 +58,17 @@ The system consists of five smart contracts organized into four functional layer
 
 ### 4.1.2 Layer Responsibilities
 
-**Frontend Layer** (Optional, out of thesis scope):
-- Provides user interface for customers and drivers
+**Frontend Layer** (in scope for RQ2):
+- Provides the Flutter interface for customers, drivers, and an administrator
 - Manages wallet connections (MetaMask, WalletConnect)
 - Displays delivery status and reward information
 - Submits transactions to smart contracts
+- Keeps application data in Firestore, which remains under the operator
 
 **Integration Layer** (SimpleDeliverySystem):
 - Acts as the single entry point for all delivery operations
 - Orchestrates interactions between tracking and reward systems
-- Maintains delivery state machine (Created → InProgress → Completed)
+- Maintains the delivery record. In the current contract, creation sets status to in progress with an assigned driver. Completion and cancellation are separate.
 - Enforces business rules (authorization, state transitions)
 - Tracks platform fees for economic analysis
 
@@ -78,7 +83,7 @@ The system consists of five smart contracts organized into four functional layer
 - Records immutable location checkpoints for each delivery
 - Stores proof of delivery hashes (photos uploaded to IPFS)
 - Provides public query interface for tracking history
-- Addresses the "Guam container problem" from Chapter 1
+- Supports RQ1 by keeping a tamper-resistant history of reported checkpoints. It does not prove that a physical shipment was at the reported place, and it does not claim to solve the Guam example in Section 1.2
 
 **Economic Layer** (DeliveryToken):
 - Standard ERC20 fungible token with 21 million supply cap
@@ -86,9 +91,9 @@ The system consists of five smart contracts organized into four functional layer
 - Enables rewards, potential future utility (payments, staking)
 
 **Governance Layer** (DecentralizationPhase):
-- Tracks platform metrics (deliveries, drivers, GMV)
-- Calculates progress toward decentralization milestones
-- Provides framework for transitioning control (Bootstrap → Hybrid → FullDAO)
+- Tracks platform metrics (deliveries, drivers, GMV, time, and stability)
+- Exposes whether Bootstrap-to-Hybrid or Hybrid-to-FullDAO thresholds are met
+- Does not, in the current code, transfer administrative powers when the phase changes
 
 ### 4.1.3 Interaction Flow Example
 
@@ -97,7 +102,7 @@ A typical delivery flow demonstrates how the layers interact:
 1. **Frontend**: Customer creates delivery request through web app
 2. **Integration Layer**: SimpleDeliverySystem creates delivery record, authorizes tracking
 3. **Transparency Layer**: Driver submits location checkpoints as delivery progresses
-4. **Integration Layer**: Customer marks delivery complete with rating
+4. **Integration Layer**: `completeDelivery` is restricted to the contract owner and records a rating. Customer confirmation of completion is not the rule in the current contract
 5. **Core Logic Layer**: BalancedRewardSystem calculates reward based on distance, rating, diversity
 6. **Economic Layer**: DeliveryToken mints tokens to driver's address
 7. **Governance Layer**: DecentralizationPhase updates network statistics
@@ -161,7 +166,7 @@ The simplicity of this contract is intentional—complex token logic is avoided 
 
 ### 4.2.2 DeliveryTrackingSystem: Transparency Infrastructure
 
-This contract addresses RQ1 (Can blockchain enhance transparency?) by providing an immutable audit trail for deliveries.
+This contract supports RQ1 by providing a tamper-resistant audit trail of reported delivery events. Hashing limits what is published. It does not make the original report true.
 
 **Design Decisions**:
 
@@ -220,7 +225,7 @@ function addCheckpoint(bytes32 deliveryId, bytes32 locationHash, string memory e
 
 ### 4.2.3 BalancedRewardSystem: Core Contribution
 
-This contract implements the primary academic contribution—a multi-factor balanced reward algorithm that prevents gaming while ensuring fairness.
+This contract implements the experimental RLE reward formula from Section 1.8: volume, distance, rating, and diversity, with limits intended to reduce simple manipulation. It does not establish that the formula is fair or resistant to coordinated attacks. Those claims depend on the Chapter 4 simulations.
 
 **4.2.3.1 Multi-Factor Reward Algorithm**
 
@@ -451,7 +456,7 @@ function completeDelivery(bytes32 deliveryId, uint8 rating) external onlyOwner {
 
 **Platform Fee Tracking**:
 
-The contract tracks platform fees for economic analysis (Chapter 6):
+The contract tracks a platform-fee percentage for accounting (discussed with the other measurements in Chapter 4):
 
 ```solidity
 uint256 public platformFeePercent = 2;  // Fixed 2% for thesis
@@ -471,53 +476,46 @@ This provides data for comparative analysis against traditional platforms (Uber:
 
 ### 4.2.5 DecentralizationPhase: Governance Framework
 
-This contract implements a milestone-based framework for progressive decentralization, addressing RQ2's governance aspects.
+This contract is the milestone mechanism for RQ3. It records readiness for a later handover. It does not perform that handover.
 
-**Three-Phase Model**:
+**Three-phase labels in the prototype**:
 
-1. **Bootstrap Phase** (Months 0-6+):
-   - Platform operated by founder
-   - Focus: Prove product-market fit
-   - Criteria to advance: 10,000 deliveries, 100 drivers, 6 months operation, 30 stable days
+1. **Bootstrap**: The contract starts here, with the deployer as owner. Thresholds to be eligible for Hybrid are 10,000 deliveries, 100 unique drivers, 180 days since deployment, and 30 days since the last recorded incident.
+2. **Hybrid**: The enum can move here only if the owner calls `advancePhase` after those thresholds are met. No shared vote is installed, and owner functions on the delivery, reward, and tracking contracts are unchanged.
+3. **FullDAO**: Eligibility requires 1,000,000 deliveries, 10,000 unique drivers, $10,000,000 GMV, and 90 days since the last incident. Reaching this label still does not create token voting or remove the owner.
 
-2. **Hybrid Phase** (Months 6-18+):
-   - Shared governance between founder and community
-   - Focus: Scale and stabilize
-   - Criteria to advance: 1M deliveries, 10,000 drivers, $10M GMV, 18 months, 90 stable days
+`advancePhase` and `recordDelivery` are `onlyOwner`. The contract comment states that a community vote is future work and that the thesis version demonstrates milestone checking. Section 2.8 asks Chapter 3 to list the powers transferred at each phase. In this design, the powers transferred are none.
 
-3. **FullDAO Phase** (Months 18+):
-   - Community-governed through token voting
-   - Focus: Self-sustaining ecosystem
-   - Terminal state
-
-**Milestone Tracking**:
+**Milestone checks in the prototype** (`blockchain/contracts/governance/DecentralizationPhase.sol`):
 
 ```solidity
-struct Phase1Milestones {
-    uint32 minDeliveries;      // 10,000
-    uint16 minUniqueDrivers;   // 100
-    uint16 minMonthsOperation; // 6
-    uint16 minStableDays;      // 30 (without critical incidents)
-}
+uint32 public constant PHASE1_MIN_DELIVERIES = 10_000;
+uint16 public constant PHASE1_MIN_DRIVERS = 100;
+uint32 public constant PHASE1_MIN_DAYS = 180;
+uint16 public constant PHASE1_STABILITY_DAYS = 30;
 
 function canAdvanceToHybrid() public view returns (bool) {
-    uint16 monthsSinceDeployment = (block.timestamp - deploymentTime) / 30 days;
-    uint16 daysSinceIncident = (block.timestamp - lastIncidentTime) / 1 days;
-    
+    if (currentPhase != Phase.Bootstrap) return false;
+    uint256 daysSinceLaunch = (block.timestamp - deploymentTime) / 1 days;
+    uint256 daysSinceIncident = (block.timestamp - lastIncidentTime) / 1 days;
     return (
-        totalDeliveries >= phase1.minDeliveries &&
-        uniqueDrivers >= phase1.minUniqueDrivers &&
-        monthsSinceDeployment >= phase1.minMonthsOperation &&
-        daysSinceIncident >= phase1.minStableDays
+        totalDeliveries >= PHASE1_MIN_DELIVERIES &&
+        uniqueDrivers >= PHASE1_MIN_DRIVERS &&
+        daysSinceLaunch >= PHASE1_MIN_DAYS &&
+        daysSinceIncident >= PHASE1_STABILITY_DAYS
     );
+}
+
+function advancePhase() external onlyOwner {
+    // Requires canAdvanceToHybrid or canAdvanceToFullDAO, then updates currentPhase only.
 }
 ```
 
-**Design Rationale**:
-- Objective criteria prevent premature decentralization
-- Time requirements ensure operational maturity
-- Stability requirements ensure platform reliability
-- Inspired by Compound's progressive decentralization (Leshner & Hayes, 2019)
+**Design rationale**:
+- Objective thresholds make readiness visible instead of leaving it as an unmeasured promise.
+- Time and stability requirements keep a phase change from happening on volume alone.
+- The owner must still call `advancePhase`, so the motivation problem in Section 2.8 is only partly addressed: the code checks the milestones, and the administrator still decides whether to advance the label.
+- Token-weighted voting, timelocks, and role renunciation from Section 2.8 are not part of this contract.
 
 ---
 
@@ -554,12 +552,11 @@ This section illustrates how data flows through the system during key operations
       │         │ 7. Update driver statistics
       │         │
       │         └──► 8. Call Token.mint(driver, tokenReward)
-      │                   └─► Mints RLE tokens to driver
+      │                   └─► Mints RLE tokens to the driver
       │
-      ├──► 9. Mint customer reward (fixed 2 RLE)
-      │
-      └──► 10. Update DecentralizationPhase metrics
-                 └─► Increment totalDeliveries, totalGMV
+      └──► 9. Update DecentralizationPhase metrics
+                 └─► Increment totalDeliveries, uniqueDrivers, totalGMV
+                 The current contracts do not mint a customer reward.
 
 [Blockchain Events Emitted]
       • DeliveryCompleted(id, driver, fiatAmount, tokenReward, rating)
@@ -567,7 +564,7 @@ This section illustrates how data flows through the system during key operations
       • Transfer(0x0, driver, tokenReward)  // ERC20 mint event
 ```
 
-**Gas Cost Breakdown** (detailed in Chapter 6):
+**Gas cost breakdown** (measured in Chapter 4, `06_evaluation.md`):
 - Update delivery state: ~30,000 gas
 - Reward calculation: ~150,000 gas
 - Token minting: ~50,000 gas
@@ -801,18 +798,17 @@ Every design involves trade-offs. This section explicitly discusses choices made
 
 ## 4.7 Design Summary
 
-This chapter has presented the architectural design of a blockchain-based delivery platform that addresses the research questions through specific design choices:
+This design section specifies how RLE represents the delivery lifecycle and where control remains centralized:
 
-**RQ1 (Transparency)**: DeliveryTrackingSystem provides immutable, queryable history—solving the "Guam container problem"
+**RQ1**: DeliveryTrackingSystem stores hashed checkpoints and proof hashes so independent parties can inspect a reported history. The design does not verify the physical event.
 
-**RQ2 (Economics/UX)**: 2% fee model vs 30%, dual payment system (fiat + tokens), progressive decentralization
+**RQ2**: SimpleDeliverySystem, the Flutter application, wallets, and Firestore are the integrated path from creation toward completion. Completion in the contract is an owner function. Driver acceptance is not an on-chain state change in the current lifecycle: creation sets the delivery to in progress with an assigned driver.
 
-**RQ3 (Technical Challenges)**: 
-- Gaming: Multi-factor balanced algorithm with diversity bonus
-- Scalability: Gas-optimized storage, adaptive difficulty, L2 target
-- Security: Established patterns, OpenZeppelin libraries, explicit authorization
+**RQ3**: DecentralizationPhase measures milestone readiness. Phase labels do not transfer administrator powers, and the RLE token is a reward, not voting power.
 
-The design balances theoretical soundness with practical implementation constraints. The next chapter (Chapter 5) will detail the implementation of these designs, including code structure, gas optimizations, and development challenges encountered.
+**RQ4**: The design leaves administrator completion, owner-triggered phase changes, open questions about hash guessability, and operator control of Firebase as limitations to measure in Chapter 4.
+
+Implementation of these designs continues in `05_implementation.md`.
 
 ---
 
@@ -846,5 +842,5 @@ Zyskind, G., Nathan, O., & Pentland, A. (2015). Decentralizing privacy: Using bl
 
 **References**: 10 sources
 
-**Status**: ✅ COMPLETE - Ready for thesis inclusion
+**Status**: Design section of Chapter 3, aligned with Chapters 1 and 2.
 

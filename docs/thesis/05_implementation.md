@@ -1,4 +1,6 @@
-# Chapter 5: Implementation
+# Chapter 3 (continued): Implementation
+
+This file is the implementation portion of Chapter 3, as defined in Chapter 1, Section 1.10. The method is in `03_methodology.md`. The design is in `04_design.md`. Results belong in Chapter 4.
 
 ## 5.1 Development Environment and Setup
 
@@ -35,7 +37,7 @@ delivery-dapp-flutter/
 │   │   └── results/
 │   ├── hardhat.config.ts            # Hardhat configuration
 │   └── package.json                 # Dependencies
-├── app/                             # Flutter frontend (optional)
+├── app/                             # Flutter application (in scope for RQ2)
 │   └── lib/
 └── docs/                           # Thesis documentation
     └── thesis/
@@ -165,13 +167,13 @@ The simplicity is a strength—fewer features mean smaller attack surface and lo
 
 ### 5.2.2 DeliveryTrackingSystem: Immutable Location History
 
-This contract solves the "Guam container problem" with immutable, auditable tracking:
+This contract records hashed location checkpoints and proof hashes for RQ1. A confirmed hash shows that the submitted value has not changed. It does not show that the physical shipment was at the reported location, and it does not solve the Guam example in Section 1.2.
 
 ```solidity
 /**
  * @title DeliveryTrackingSystem
- * @notice Immutable location checkpoint storage for supply chain transparency
- * @dev Addresses RQ1: Can blockchain enhance transparency?
+ * @notice Hashed location checkpoint storage for a shared delivery history
+ * @dev Supports RQ1: auditable records of reported events, not proof of physical truth
  * 
  * Key features:
  * - GPS coordinates hashed for privacy (full data stored off-chain)
@@ -998,24 +1000,23 @@ await ethers.provider.send("evm_mine", []); // Mine block with new timestamp
 
 ## 5.8 Implementation Summary
 
-This chapter has documented the implementation of 1,375 lines of Solidity contracts that address the thesis research questions through concrete code:
+This section documents the contracts and supporting application that implement the Chapter 3 design:
 
-**RQ1 (Transparency)**: DeliveryTrackingSystem provides immutable, queryable checkpoint history with gas-efficient storage patterns.
+**RQ1**: DeliveryTrackingSystem stores hashed checkpoints and proof hashes that can be queried after submission.
 
-**RQ2 (Economics/Governance)**: 2% fee model implemented in SimpleDeliverySystem; progressive decentralization framework in DecentralizationPhase.
+**RQ2**: SimpleDeliverySystem, wallet connection, and the Flutter application are the integrated lifecycle. Creation assigns a driver and sets status to in progress. `completeDelivery` is `onlyOwner`. Firestore stores an off-chain copy under operator control.
 
-**RQ3 (Technical Challenges)**:
-- Gaming resistance: Multi-factor balanced algorithm with anti-gaming checks
-- Scalability: Adaptive difficulty adjustment, gas-optimized storage
-- Security: OpenZeppelin libraries, explicit authorization, reentrancy guards
+**RQ3**: DecentralizationPhase records milestone counters. `advancePhase` changes `currentPhase` only when the owner calls it and the thresholds pass. The RLE token is minted to the driver through BalancedRewardSystem. It is not a voting token.
 
-The implementation demonstrates that blockchain-based delivery systems are technically feasible when proper optimization techniques are applied. The next chapter (Chapter 6) evaluates the system's performance through testing and simulation.
+**RQ4**: Input checks, owner restrictions, gas-oriented storage, and the reward limits are implementation choices whose weaknesses are measured in Chapter 4 (`06_evaluation.md` and `07_discussion.md`).
+
+The implementation shows which parts of the lifecycle can be represented. It does not show that RLE is production-ready or that control has moved to participants.
 
 ---
 
 ## References
 
-Testing and simulation results are documented in Chapter 6. Complete contract source code is provided in Appendix A.
+Testing and simulation results are documented in Chapter 4 (`06_evaluation.md` and `07_discussion.md`). Contract source is in `blockchain/contracts/`.
 
 ---
 
@@ -1025,5 +1026,5 @@ Testing and simulation results are documented in Chapter 6. Complete contract so
 
 **References**: Inherits from Chapters 3-4
 
-**Status**: ✅ COMPLETE - Ready for thesis inclusion
+**Status**: Implementation section of Chapter 3, aligned with Chapters 1 and 2.
 

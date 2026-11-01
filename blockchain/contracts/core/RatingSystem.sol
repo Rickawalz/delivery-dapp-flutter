@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title RatingSystem
  * @dev Manages ratings for deliveries
  */
-contract RatingSystem is ReentrancyGuard {
+contract RatingSystem is Ownable, ReentrancyGuard {
     // State variables
     struct Rating {
         uint256 rating;
@@ -35,7 +36,7 @@ contract RatingSystem is ReentrancyGuard {
         uint256 deliveryId,
         uint256 rating,
         string memory comment
-    ) external nonReentrant {
+    ) external onlyOwner nonReentrant {
         // ========== COMPREHENSIVE INPUT VALIDATION ==========
         require(deliveryId > 0, "RatingSystem: Invalid delivery ID");
         require(rating >= MIN_RATING && rating <= MAX_RATING, "Rating must be between 1 and 5");
@@ -86,7 +87,7 @@ contract RatingSystem is ReentrancyGuard {
         uint256 deliveryId,
         uint256 newRating,
         string memory newComment
-    ) external nonReentrant {
+    ) external onlyOwner nonReentrant {
         // ========== COMPREHENSIVE INPUT VALIDATION ==========
         require(deliveryId > 0, "RatingSystem: Invalid delivery ID");
         require(newRating >= MIN_RATING && newRating <= MAX_RATING, "Rating must be between 1 and 5");

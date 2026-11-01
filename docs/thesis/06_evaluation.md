@@ -1,6 +1,8 @@
-# Chapter 6: Evaluation and Results
+# Chapter 4: Results
 
-This chapter presents the empirical evaluation of the implemented decentralized delivery platform. The evaluation employs four complementary approaches: (1) functional validation through comprehensive testing, (2) performance analysis via gas cost measurements, (3) economic simulation for fairness and gaming resistance assessment, and (4) comparative analysis against existing centralized platforms. Together, these evaluations provide evidence to answer the research questions posed in Chapter 1.
+This file is the results portion of Chapter 4, as defined in Chapter 1, Section 1.10. Discussion continues in `07_discussion.md`. The research questions are RQ1–RQ4 in `01_introduction.md`.
+
+The evaluation uses contract tests, gas measurements, reward simulations, and notes on security tooling. Fee tables that compare a 2 percent accounting field with commercial platforms are context for cost, not answers to Section 1.7. Section 1.8 excludes a comparison with proprietary company databases and a field deployment. Results below are limited to what the controlled tests and simulations show.
 
 ---
 
@@ -286,7 +288,7 @@ The adaptive difficulty mechanism was tested under three growth scenarios:
 
 ## 6.4 Comparative Analysis: Platform Economics
 
-This section compares the decentralized system against traditional centralized platforms (Uber, DoorDash).
+This section compares a 2 percent fee field stored by the contract with published fee rates for Uber Eats and DoorDash. Section 1.8 excludes a comparison against proprietary company databases, and the contract does not escrow or transfer the delivery price. The table is an illustration of the accounting field. It is not an answer to RQ1–RQ4, and the driver column is not money the prototype paid out.
 
 ### 6.4.1 Fee Structure Comparison
 
@@ -300,7 +302,7 @@ This section compares the decentralized system against traditional centralized p
 
 *Assumes $15 delivery, tokens valued separately*
 
-**Key Finding**: **93.3% fee reduction** compared to traditional platforms (30% → 2%).
+**Illustration only**: moving a stated fee from 30 percent to 2 percent is a 93.3 percent reduction of that rate. RLE records the 2 percent figure. It does not collect it.
 
 **Driver Earnings Comparison** (per delivery):
 
@@ -431,58 +433,32 @@ Mythril symbolic execution (timeout: 10 minutes per contract):
 
 ## 6.6 Usability Assessment
 
-While a full Flutter application was deferred, basic usability was validated through:
+The Flutter application is part of the prototype for RQ2. It provides customer, driver, and administrator screens, wallet connection, and Firestore-backed views. The contract test suite does not measure that interface. What the tests show about usability is limited to the contract surface:
 
-1. **Test Script Interactions**: All operations completable via Hardhat console
-2. **Event Monitoring**: Applications can listen to blockchain events for real-time updates
-3. **Gas Costs**: L2 costs ($0.41/delivery) within acceptable range for users
-4. **Query Functions**: View functions enable gas-free data retrieval for UIs
+1. **Scripted contract calls**: Delivery operations can be invoked in the Hardhat environment.
+2. **Events**: An application can listen for recorded events.
+3. **Gas**: Reported L2 estimates are about $0.41 per delivery flow, which is a performance result for RQ4, not a user study.
+4. **View functions**: Several getters can be called without sending a transaction.
 
-**Conclusion**: The contract interfaces are suitable for frontend integration. A production application could achieve good UX by combining:
-- MetaMask for transaction signing
-- Event listeners for real-time updates
-- View functions for displaying data without gas costs
-- Off-chain indexing (The Graph) for historical queries
+A user study of wallet approval, error messages, and task completion was not run. Section 1.8 excludes a large group of human participants. Chapter 4 therefore cannot claim that the interface is usable beyond the existence of the screens and the remaining manual steps, including owner-only completion and unfinished driver actions in the application.
 
 ---
 
 ## 6.7 Summary of Findings
 
-This evaluation provides empirical evidence addressing the research questions:
+The measurements in this file are discussed against RQ1–RQ4 in `07_discussion.md`. Read as results, they support the following limited statements:
 
-**RQ1: Can blockchain enhance supply chain transparency?**
-- ✅ **YES**: Immutable tracking demonstrated with DeliveryTrackingSystem
-- ✅ 100% transparency vs 0% in traditional platforms (Table 6.8)
-- ✅ Gas costs feasible on L2 ($0.10/checkpoint)
+**RQ1.** DeliveryTrackingSystem can store and expose hashed checkpoints and proof hashes. The tests show a queryable record of submitted events. They do not show that the physical shipment matched the report, and they do not show that every stakeholder received the same off-chain view. The Firestore copy is a separate database.
 
-**RQ2: How does decentralization impact UX and cost efficiency?**
-- ✅ **93.3% fee reduction** (30% → 2%) demonstrated (Table 6.7)
-- ✅ **72% higher driver earnings** when including token rewards
-- ⚠️ **Economic viability requires 8,367 deliveries/day** at 2% fee or higher fee percentage
-- ✅ Progressive decentralization framework implemented and tested
+**RQ2.** The contracts and the Flutter application can represent parts of a delivery lifecycle: create a delivery with an assigned driver, record tracking data, and complete through an owner call that rates the driver and mints a reward. Creation does not use a separate accept step. Completion is not a customer or driver call. Several driver screens in the application are not connected to contract functions.
 
-**RQ3: What technical challenges exist?**
-- ⚠️ **Gaming resistance**: Partial success
-  - ✅ Volume spam effectively prevented
-  - ⚠️ Friend circles: 98% success rate (needs improvement)
-  - ❌ Distance farming: 45% more profitable than intended (needs rebalancing)
-- ✅ **Gas costs**: $0.41/delivery viable on L2, prohibitive on mainnet ($24)
-- ✅ **Scalability**: Adaptive difficulty tested across 3 scenarios, works for 2-5x variance
-- ✅ **Security**: No critical vulnerabilities found in automated analysis
+**RQ3.** DecentralizationPhase can reject `advancePhase` until its counters, time, and stability checks pass, and the owner can then change `currentPhase`. The tests of that contract, where they pass, show milestone checking. They do not show a transfer of `onlyOwner` rights, a token vote, or a distribution of control across many participants. The reward simulation does not show that earned RLE would be a fair voting distribution. Reported simulation outputs are gaming reduction 0.0, Gini improvement about 1.38 percent, friend-circle prevention about 1.8 percent, and distance-farming efficiency about 1.45.
 
-**Overall Assessment**: The system successfully demonstrates blockchain viability for last-mile delivery with significant improvements in transparency and cost efficiency. However, two challenges require further work:
-1. Economic model needs refinement (2% fee insufficient to cover gas costs)
-2. Gaming resistance partially effective (distance farming exploit identified)
+**RQ4.** The same runs expose limitations: a documented Hardhat pass rate of 84 of 99 tests, owner-gated completion, gas that the draft treats as about $0.41 per delivery flow on an L2 estimate and about $24 on a mainnet estimate, weak resistance to friend-circle and distance-farming strategies, and no field deployment. A 2 percent fee field is an accounting value in the contract. It is not a settled payment, and it is not an answer to a research question in Section 1.7.
 
-These findings inform the discussion in Chapter 7 and future work recommendations in Chapter 8.
+These findings are interpreted in `07_discussion.md` and summarized in `08_conclusion.md`.
 
 ---
 
-**Chapter 6 Word Count**: ~4,800 words (~6 pages)
-
-**Tables**: 8 comprehensive data tables
-
-**Figures**: Simulation results and comparative analyses
-
-**Status**: ✅ COMPLETE - Ready for thesis inclusion
+**Status**: Results portion of Chapter 4, aligned with Chapters 1 and 2.
 

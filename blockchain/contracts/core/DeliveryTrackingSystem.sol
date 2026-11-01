@@ -56,6 +56,9 @@ contract DeliveryTrackingSystem is Ownable {
         string reason,
         uint256 timestamp
     );
+
+    /// @notice Emitted when the owner clears a dispute
+    event DisputeResolved(bytes32 indexed deliveryId, uint256 timestamp);
     
     /**
      * @notice Authorizes an address to add checkpoints for a delivery
@@ -187,6 +190,26 @@ contract DeliveryTrackingSystem is Ownable {
         
         emit DisputeRaised(deliveryId, msg.sender, reason, currentTime);
     }
+
+    /**
+     * @notice Clears a dispute so the delivery can be completed
+     * @dev Only the owner (SimpleDeliverySystem) may resolve
+     * @param deliveryId Unique delivery identifier
+     */
+    function resolveDispute(bytes32 deliveryId) external onlyOwner {
+        require(tracking[deliveryId].disputed, "DeliveryTracking: Not disputed");
+        tracking[deliveryId].disputed = false;
+        emit DisputeResolved(deliveryId, block.timestamp);
+    }
+
+    /**
+     * @notice Whether a delivery is currently disputed
+     * @param deliveryId Unique delivery identifier
+     * @return True when a dispute is open
+     */
+    function isDisputed(bytes32 deliveryId) public view returns (bool) {
+        return tracking[deliveryId].disputed;
+    }
     
     /**
      * @notice Gets current location and tracking summary for a delivery
@@ -197,7 +220,7 @@ contract DeliveryTrackingSystem is Ownable {
      * @return checkpoints Total number of checkpoints recorded
      * @return pickupProof IPFS hash of pickup proof
      * @return deliveryProof IPFS hash of delivery proof
-     * @return isDisputed Whether delivery is disputed
+     * @return disputed Whether delivery is disputed
      */
     function getCurrentLocation(bytes32 deliveryId)
         external
@@ -208,7 +231,7 @@ contract DeliveryTrackingSystem is Ownable {
             uint8 checkpoints,
             bytes32 pickupProof,
             bytes32 deliveryProof,
-            bool isDisputed
+            bool disputed
         )
     {
         CurrentTracking memory t = tracking[deliveryId];

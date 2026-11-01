@@ -6,21 +6,23 @@ This document provides a comprehensive guide to all thesis-related files and the
 
 ---
 
-## 📚 **Thesis Chapters** (Core Content)
+## Thesis chapters
 
-All thesis chapters are located in `docs/thesis/`:
+The governing text is `docs/thesis/01_introduction.md` and `docs/thesis/02_literature_review.md`, from `RLE_Ch1-2_Ch2revised--finished.docx`. Section 1.10 organizes the thesis into five chapters. The older files are the working drafts for Chapters 3–5.
 
-| File | Chapter | Pages | Status | Location |
-|------|---------|-------|--------|----------|
-| `01_introduction.md` | Chapter 1: Introduction | 6 | ✅ (You wrote this) | Your file |
-| `03_methodology.md` | Chapter 3: Methodology | 6.5 | ✅ Complete | `docs/thesis/` |
-| `04_design.md` | Chapter 4: System Design | 8.5 | ✅ Complete | `docs/thesis/` |
-| `05_implementation.md` | Chapter 5: Implementation | 8 | ✅ Complete | `docs/thesis/` |
-| `06_evaluation.md` | Chapter 6: Evaluation | 6 | ✅ Complete | `docs/thesis/` |
-| `07_discussion.md` | Chapter 7: Discussion | 5 | ✅ Complete | `docs/thesis/` |
-| `08_conclusion.md` | Chapter 8: Conclusion | 4.5 | ✅ Complete | `docs/thesis/` |
+| File | Place in the thesis |
+|------|---------------------|
+| `01_introduction.md` | Chapter 1 |
+| `02_literature_review.md` | Chapter 2 |
+| `03_methodology.md` | Chapter 3, method |
+| `04_design.md` | Chapter 3, design |
+| `05_implementation.md` | Chapter 3, implementation |
+| `06_evaluation.md` | Chapter 4, results |
+| `07_discussion.md` | Chapter 4, discussion |
+| `08_conclusion.md` | Chapter 5 |
+| `THESIS_COMPLETE_SUMMARY.md` | How these files map to the current argument |
 
-**Note**: Chapter 2 (Background & Related Work) is optional for Master's thesis with strong methodology.
+Research questions are RQ1–RQ4 in Chapter 1, Section 1.7. Do not use the older three-question framing (transparency yes/no, fee reduction, technical challenges as the thesis questions).
 
 ---
 
@@ -173,30 +175,25 @@ Located in `blockchain/results/thesis_evaluation_results.json`:
 
 When creating final PDF, use this order:
 
-1. **Title Page**
-2. **Abstract** (250-300 words) - **WRITE THIS**
-3. **Table of Contents** - Auto-generate
-4. **Chapter 1**: Introduction (6 pages) - Your file
-5. **Chapter 2**: Background (optional - skip or 5-6 pages)
-6. **Chapter 3**: Methodology (`03_methodology.md`)
-7. **Chapter 4**: Design (`04_design.md`)
-8. **Chapter 5**: Implementation (`05_implementation.md`)
-9. **Chapter 6**: Evaluation (`06_evaluation.md`)
-10. **Chapter 7**: Discussion (`07_discussion.md`)
-11. **Chapter 8**: Conclusion (`08_conclusion.md`)
-12. **References** - Compile from all chapters
-13. **Appendix A**: Full contract code (copy from `contracts/`)
-14. **Appendix B**: Test results (copy from test output)
-15. **Appendix C**: Simulation code (copy `thesis_evaluator.py`)
+1. **Title page**
+2. **Abstract** (not in this folder yet)
+3. **Table of contents**
+4. **Chapter 1**: `01_introduction.md`
+5. **Chapter 2**: `02_literature_review.md`
+6. **Chapter 3**: `03_methodology.md`, then `04_design.md`, then `05_implementation.md`
+7. **Chapter 4**: `06_evaluation.md`, then `07_discussion.md`
+8. **Chapter 5**: `08_conclusion.md`
+9. **References** from Chapters 1 and 2, plus sources still cited in the drafts
+10. **Appendices**: contract code, tests, and `blockchain/simulation/thesis_evaluator.py`
 
 ---
 
 ## 🔍 **How to Find Specific Content**
 
-### **Research Questions Answers**:
-- **RQ1 (Transparency)**: Chapter 6, Section 6.1; Chapter 7, Section 7.1.1
-- **RQ2 (Economics/UX)**: Chapter 6, Section 6.4; Chapter 7, Section 7.1.2
-- **RQ3 (Technical Challenges)**: Chapter 6, Sections 6.2-6.3, 6.5; Chapter 7, Section 7.1.3
+### **Research question material**:
+- **RQ1–RQ4, as stated**: `docs/thesis/01_introduction.md`, Section 1.7
+- **Literature and the decentralization comparison**: `docs/thesis/02_literature_review.md`
+- **How the results are read**: `docs/thesis/07_discussion.md` and `docs/thesis/08_conclusion.md`
 
 ### **Code Examples**:
 - **Balanced Algorithm**: Chapter 5, Section 5.2.3
@@ -221,7 +218,7 @@ When creating final PDF, use this order:
 
 These can be ignored for thesis purposes:
 
-- `app/` folder - Flutter frontend (optional, not completed)
+- `app/` is part of the thesis prototype (RQ2). It is not a finished production client.
 - `blockchain/node_modules/` - Dependencies (auto-installed)
 - `blockchain/artifacts/` - Compiled contracts (auto-generated)
 - `blockchain/cache/` - Build cache (auto-generated)
@@ -241,18 +238,13 @@ These can be ignored for thesis purposes:
 - [x] All code documented with NatSpec comments
 
 ### **Thesis Writing**:
-- [x] Chapter 1: Introduction (you wrote this)
-- [x] Chapter 3: Methodology (6.5 pages)
-- [x] Chapter 4: Design (8.5 pages)
-- [x] Chapter 5: Implementation (8 pages)
-- [x] Chapter 6: Evaluation (6 pages)
-- [x] Chapter 7: Discussion (5 pages)
-- [x] Chapter 8: Conclusion (4.5 pages)
-- [x] 25 academic references cited
-- [x] 12 data tables created
-- [x] 48 code examples provided
-- [ ] Abstract (250-300 words) - **TODO**
-- [ ] Chapter 2: Background (optional)
+- [x] Chapter 1: `01_introduction.md`
+- [x] Chapter 2: `02_literature_review.md`
+- [x] Chapter 3 drafts: method, design, and implementation files, aligned to RQ1–RQ4
+- [x] Chapter 4 drafts: results and discussion, aligned to RQ1–RQ4
+- [x] Chapter 5 draft: `08_conclusion.md`
+- [ ] Abstract
+- [ ] Single compiled manuscript
 
 ### **Evaluation Evidence**:
 - [x] Gas cost measurements
