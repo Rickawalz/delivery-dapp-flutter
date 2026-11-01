@@ -49,3 +49,14 @@ app.*.map.json
 .env.development
 .env.test
 .env.production 
+
+# Cursor / AI editor files (local only, never committed)
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.specstory/
+.history/
+
+# Local dev files written by deploy scripts
+app/assets/config/dev_host.json
