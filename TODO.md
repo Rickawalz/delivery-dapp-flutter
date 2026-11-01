@@ -6,21 +6,14 @@ delivery-dapp/
 ├── blockchain/                      # Smart Contracts
 │   ├── contracts/                   # Solidity Contracts
 │   │   ├── tokens/                  # Token Contracts
-│   │   │   ├── DeliveryToken.sol    # ERC-20 Token
-│   │   │   └── DeliveryNFT.sol      # ERC-1155 NFT
-│   │   ├── core/                    # Core Contracts
-│   │   │   ├── DeliverySystem.sol   # Main Delivery Logic
-│   │   │   ├── StakingManager.sol   # Staking System
-│   │   │   └── RatingSystem.sol     # Rating System
-│   │   └── interfaces/              # Contract Interfaces
-│   │       ├── IDeliveryToken.sol
-│   │       └── IDeliverySystem.sol
+│   │   │   └── DeliveryToken.sol    # ERC-20 Token
+│   │   └── core/                    # Core Contracts
+│   │       ├── SimpleDeliverySystem.sol  # Main Delivery Logic
+│   │       └── RatingSystem.sol     # Rating System
 │   ├── scripts/                     # Deployment Scripts
-│   │   ├── deploy.js
-│   │   └── verify.js
-│   └── test/                        # Test Files
-│       ├── unit/
-│       └── integration/
+│   │   ├── deploy-thesis.ts
+│   │   └── test-delivery.ts
+│   └── test/                        # Hardhat tests (blockchain/test/)
 ├── app/                             # Flutter Application (Web & Mobile)
 │   ├── lib/                         # Dart Source Code
 │   │   ├── screens/                 # App Screens
@@ -71,18 +64,8 @@ delivery-dapp/
     - [ ] Add transfer delay
     - [ ] Implement blacklist functionality
     - [ ] Add transfer limits
-- [ ] DeliveryNFT.sol (ERC-1155)
-  - [ ] Delivery receipt NFTs
-    - [ ] Design NFT metadata structure
-    - [ ] Implement minting on delivery completion
-    - [ ] Add URI handling for metadata
-  - [ ] Achievement badges
-    - [ ] Define achievement criteria
-    - [ ] Implement badge minting logic
-    - [ ] Add badge metadata
-
 ### Core Contracts
-- [ ] DeliverySystem.sol
+- [ ] SimpleDeliverySystem.sol
   - [ ] Delivery request creation
     - [ ] Input validation
     - [ ] Price calculation
@@ -99,15 +82,6 @@ delivery-dapp/
     - [ ] Escrow system
     - [ ] Fee calculation
     - [ ] Refund logic
-- [ ] StakingManager.sol
-  - [ ] Driver staking
-    - [ ] Staking requirements
-    - [ ] Lock-up periods
-    - [ ] Slashing conditions
-  - [ ] Reward distribution
-    - [ ] Reward calculation
-    - [ ] Distribution timing
-    - [ ] Vesting schedules
 - [ ] RatingSystem.sol
   - [ ] Customer ratings
     - [ ] Rating criteria
@@ -288,6 +262,10 @@ delivery-dapp/
   - [ ] Caching
   - [ ] Query optimization
   - [ ] Load balancing
+
+## Future work
+
+DeliveryNFT and StakingManager were removed from the codebase.
 
 ## Notes
 - Remember to maintain security best practices

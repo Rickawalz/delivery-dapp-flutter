@@ -23,7 +23,7 @@ Testing and deployment follow industry best practices, with Flutter Test coverin
 
 The system architecture is designed to be scalable and maintainable, with clear separation of concerns between blockchain and application components. The smart contracts handle core business logic and data storage, while the Flutter applications provide intuitive interfaces for users to interact with these contracts. This separation allows for independent scaling and updating of different system components while maintaining overall system integrity.
 
-Development standards are strictly maintained across all platforms. Smart contracts follow OpenZeppelin's proven patterns, Dart code adheres to the Flutter style guide, and comprehensive testing coverage is required across all components, with smart contracts particularly requiring 100% test coverage to ensure security and reliability.
+Development standards are strictly maintained across all platforms. Smart contracts follow OpenZeppelin's proven patterns, Dart code adheres to the Flutter style guide, and the Hardhat suite is the contract check. The current result is 83 passing tests and 3 failing gas-threshold tests.
 
 To begin development, team members need to install Node.js, Git, VS Code (or their preferred IDE), the Flutter SDK, and appropriate mobile development tools (Android Studio/Xcode). This standardized environment ensures consistent development experiences and reduces potential configuration issues.
 
@@ -53,24 +53,22 @@ delivery-dapp/
 blockchain/
 ├── contracts/
 │   ├── tokens/
-│   │   ├── DeliveryToken.sol     # ERC-20 token contract
-│   │   └── DeliveryNFT.sol       # ERC-1155 for delivery receipts
+│   │   └── DeliveryToken.sol     # ERC-20 token contract
 │   │
-│   ├── core/
-│   │   ├── DeliverySystem.sol    # Main delivery logic
-│   │   ├── StakingManager.sol    # Driver staking system
-│   │   └── RatingSystem.sol      # Rating and reputation
-│   │
-│   └── interfaces/
-│       └── IDeliverySystem.sol   # Contract interfaces
+│   └── core/
+│       ├── SimpleDeliverySystem.sol  # Main delivery logic
+│       └── RatingSystem.sol      # Rating and reputation
 │
 ├── scripts/
-│   ├── deploy.js                 # Deployment scripts
-│   └── verify.js                 # Contract verification
+│   ├── deploy-thesis.ts          # Deployment script
+│   └── test-delivery.ts          # Local delivery exercise
 │
-└── test/
-    └── delivery_test.js          # Contract tests
+└── test/                         # Hardhat tests (blockchain/test/)
 ```
+
+## Future work
+
+DeliveryNFT and StakingManager were removed from the codebase.
 
 ### 3. Flutter Application Structure
 ```
@@ -218,18 +216,17 @@ flutter doctor
 git clone [repository-url]
 cd delivery-dapp
 
-# Install dependencies
+cd blockchain
 npm install
 ```
 
 #### 2. Smart Contract Development Setup
 ```bash
-# Initialize Hardhat
-npx hardhat init
-
-# Install contract dependencies
-npm install @openzeppelin/contracts
-npm install --save-dev @nomiclabs/hardhat-ethers ethers
+# The Hardhat project already lives in blockchain/
+cd blockchain
+npm install
+npx hardhat compile
+npx hardhat test
 ```
 
 #### 3. Flutter Application Setup
@@ -301,7 +298,7 @@ flutter pub add flutter_secure_storage
 ### Development Standards
 - Smart contracts: OpenZeppelin standards
 - Dart: Flutter style guide
-- 100% test coverage for smart contracts
+- Hardhat tests: 83 passing, 3 failing gas-threshold tests
 - Comprehensive documentation
 
 ### Regular Checkpoints

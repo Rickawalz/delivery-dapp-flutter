@@ -63,6 +63,3 @@ Thumbs.db
 .cursorindexingignore
 .specstory/
 .history/
-
-# Local dev files written by deploy scripts
-app/assets/config/dev_host.json

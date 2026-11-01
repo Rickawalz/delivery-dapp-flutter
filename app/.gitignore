@@ -59,4 +59,4 @@ app.*.map.json
 .history/
 
 # Local dev files written by deploy scripts
-app/assets/config/dev_host.json
+assets/config/dev_host.json
