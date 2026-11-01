@@ -271,7 +271,7 @@ Access the analytics dashboard via the analytics button in the app bar to view:
 ```
 app/
 ├── lib/
-│   ├── constants/          # Contract addresses and ABIs
+│   ├── constants/          # Environment configuration
 │   ├── models/            # Data models
 │   ├── screens/           # UI screens
 │   │   ├── customer/      # Customer-specific screens

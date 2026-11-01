@@ -64,16 +64,6 @@ class _CreateDeliveryDialogState extends State<CreateDeliveryDialog> {
   
   /// Available delivery type options with different service levels
   final List<String> _deliveryTypes = ['Standard', 'Express', 'Same Day'];
-  
-  /// Predefined location suggestions to help users quickly select common addresses
-  final List<String> _suggestedLocations = [
-    'Downtown Office District',
-    'Airport Terminal',
-    'University Campus',
-    'Shopping Mall',
-    'Residential Area',
-    'Hospital District',
-  ];
 
   @override
   Widget build(BuildContext context) {

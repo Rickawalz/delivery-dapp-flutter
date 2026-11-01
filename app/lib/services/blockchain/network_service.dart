@@ -9,7 +9,7 @@ class NetworkService {
   // Use environment-aware configuration
   static String get networkName => Environment.networkName;
   static String get rpcUrl => Environment.isDevelopment 
-      ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+      ? 'http://$devHardhatHost:8545'
       : Environment.productionRpc;      // Production: Sepolia
   static String get chainId => Environment.chainIdHex;
   static const String currencySymbol = 'ETH';

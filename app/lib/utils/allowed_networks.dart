@@ -26,7 +26,7 @@ class AllowedNetworks {
       hardhatChainId: NetworkInfo(
         chainId: hardhatChainId,
         name: hardhatNetworkName,
-        rpcUrl: 'http://$HARDHAT_RPC_IP:8545',  // Dynamic IP from deploy script
+        rpcUrl: 'http://$devHardhatHost:8545',
         currencySymbol: 'ETH',
         blockExplorer: null,
         isLocal: true,

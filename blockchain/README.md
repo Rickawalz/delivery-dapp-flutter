@@ -20,6 +20,8 @@ flutter run -d chrome --web-browser-flag="--disable-web-security"
 
 On the local Hardhat node, account #0 is the deployer and the Bootstrap founder. Account #1 is the hybrid council when `HYBRID_COUNCIL_ADDRESS` is not set. Further accounts can be used as customers and drivers.
 
+`deploy-thesis.ts` writes the detected LAN address to `app/assets/config/dev_host.json`. That file is git-ignored. When it is absent, the app uses `10.0.2.2`, which is the Android emulator's route to the host. The script also copies the `SimpleDeliverySystem` ABI into `app/assets/abi/SimpleDeliverySystem.json`.
+
 ## Controllers
 
 `DecentralizationPhase` has three controllers. Only one is active, and `currentController()` returns it:

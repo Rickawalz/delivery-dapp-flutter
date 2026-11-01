@@ -17,9 +17,9 @@ class Environment {
   static const String productionNetworkName = 'Sepolia Testnet';
   
   // ========== DEVELOPMENT CONFIGURATION ==========
-  // Local Hardhat - IP is auto-updated by deploy-thesis.ts
-  // The HARDHAT_RPC_IP constant in contract_service.dart is dynamically updated
-  // No hardcoded IP here - it uses the auto-updated value
+  // Local Hardhat. The committed default host is 10.0.2.2 (Android emulator).
+  // deploy-thesis.ts writes a detected LAN address to assets/config/dev_host.json,
+  // which ContractService reads in development.
   static const int developmentChainId = 31337;  // Hardhat
   static const String developmentChainIdHex = '0x7A69';  // Hardhat in hex
   static const String developmentNetworkName = 'Hardhat Local';

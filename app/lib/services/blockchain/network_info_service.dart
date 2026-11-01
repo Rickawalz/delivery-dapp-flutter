@@ -13,7 +13,7 @@ class NetworkInfoService extends ChangeNotifier {
   
   // Network state - use environment-aware default
   String _rpcUrl = Environment.isDevelopment 
-      ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+      ? 'http://$devHardhatHost:8545'
       : Environment.productionRpc;      // Production: Sepolia
   int? _rpcChainId;
   String _rpcNetworkName = 'Unknown';

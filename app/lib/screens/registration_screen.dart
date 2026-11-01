@@ -20,7 +20,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _passwordController = TextEditingController();
   String _username = '';
   String _password = '';
-  String _confirmPassword = '';
   String _email = '';
   String _fullName = '';
   String _phone = '';
@@ -231,7 +230,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           }
                           return null;
                         },
-                        onSaved: (value) => _confirmPassword = value ?? '',
                       ),
                       const SizedBox(height: 24),
                       if (_error != null)

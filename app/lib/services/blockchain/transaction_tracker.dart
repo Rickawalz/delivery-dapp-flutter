@@ -238,9 +238,8 @@ class TransactionTracker extends ChangeNotifier {
 
   /// Get transaction cost in REL (if applicable)
   BigInt? getTransactionCostRel(String txHash) {
-    final transaction = _transactions[txHash];
-    // This would need to be calculated based on token price
-    // For now, return null as we don't have price oracle
+    if (_transactions[txHash] == null) return null;
+    // Token price conversion needs an oracle, which this app does not have.
     return null;
   }
 

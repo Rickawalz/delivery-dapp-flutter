@@ -15,9 +15,26 @@ import '../../utils/allowed_networks.dart';
 import '../../models/transaction_result.dart';
 import '../../constants/environment.dart';
 
-// AUTO-GENERATED: This IP is automatically updated by deploy-thesis.ts
-// Only used in development mode (Environment.isDevelopment = true)
-const String HARDHAT_RPC_IP = '172.20.1.131';
+// Committed default for the Android emulator. In development, deploy-thesis.ts
+// writes assets/config/dev_host.json and loadDevHardhatHost() prefers that host.
+const String HARDHAT_RPC_IP = '10.0.2.2';
+String devHardhatHost = HARDHAT_RPC_IP;
+
+Future<void> loadDevHardhatHost() async {
+  if (!Environment.isDevelopment) {
+    return;
+  }
+  try {
+    final raw = await rootBundle.loadString('assets/config/dev_host.json');
+    final decoded = json.decode(raw);
+    final host = decoded is Map ? decoded['host'] : null;
+    if (host is String && host.isNotEmpty) {
+      devHardhatHost = host;
+    }
+  } catch (_) {
+    devHardhatHost = HARDHAT_RPC_IP;
+  }
+}
 
 class ContractService extends ChangeNotifier {
   Web3Client _client;
@@ -27,7 +44,10 @@ class ContractService extends ChangeNotifier {
   Credentials? _credentials;
   String? _walletAddress;
   bool _isInitialized = false;
+  Map<String, String> _contractAddresses = {};
   TransactionTracker? _transactionTracker;
+
+  Map<String, String> get contractAddresses => Map.unmodifiable(_contractAddresses);
   WalletConnectService? _walletConnectService;
   
   // Expose client for NetworkInfoService
@@ -250,7 +270,7 @@ class ContractService extends ChangeNotifier {
       : _walletConnectService = walletConnectService,
         _client = Web3Client(
           Environment.isDevelopment 
-              ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+              ? 'http://$devHardhatHost:8545'  // Development: dev_host.json or 10.0.2.2
               : Environment.productionRpc,      // Production: Sepolia
           Client(),
         );
@@ -264,7 +284,7 @@ class ContractService extends ChangeNotifier {
 
     print('  - Loading RPC URL...');
     _rpcUrl = Environment.isDevelopment 
-        ? 'http://$HARDHAT_RPC_IP:8545'  // Development: dynamic IP
+        ? 'http://$devHardhatHost:8545'  // Development: dev_host.json or 10.0.2.2
         : Environment.productionRpc;      // Production: Sepolia
     print('  - RPC URL: $_rpcUrl');
     print('  - Environment: ${Environment.isDevelopment ? "Development (Hardhat)" : "Production (Sepolia)"}');
@@ -275,7 +295,7 @@ class ContractService extends ChangeNotifier {
     
     // Update Web3 client with correct RPC URL if different
     final expectedRpcUrl = Environment.isDevelopment 
-        ? 'http://$HARDHAT_RPC_IP:8545' 
+        ? 'http://$devHardhatHost:8545' 
         : Environment.productionRpc;
     
     if (_rpcUrl != expectedRpcUrl) {
@@ -352,6 +372,7 @@ class ContractService extends ChangeNotifier {
       }
       
       final config = json.decode(configString);
+      _storeContractAddresses(config);
       
       // Handle different config structures and contract names
       if (config.containsKey('contracts')) {
@@ -370,6 +391,21 @@ class ContractService extends ChangeNotifier {
     } catch (e) {
       throw Exception('Failed to load contract configuration: $e');
     }
+  }
+
+  void _storeContractAddresses(dynamic config) {
+    final source = config is Map && config['contracts'] is Map
+        ? config['contracts'] as Map
+        : config is Map
+            ? config
+            : <dynamic, dynamic>{};
+    final next = <String, String>{};
+    source.forEach((key, value) {
+      if (value is String && value.startsWith('0x')) {
+        next[key.toString()] = value;
+      }
+    });
+    _contractAddresses = next;
   }
 
   Future<List<dynamic>> _loadContractAbi() async {
@@ -567,28 +603,43 @@ class ContractService extends ChangeNotifier {
       throw Exception('Rating must be between 1 and 5');
     }
 
-    if (_credentials == null) {
-      throw Exception('No wallet credentials available. Please connect your wallet first.');
-    }
-
     try {
       print('🚀 DEBUG: Sending completeDelivery transaction...');
-      
+      print('  The connected wallet must be the customer. During Bootstrap the founder may also complete.');
+
       final submittedAt = DateTime.now();
       final deliveryIdBytes = _hexToBytes(deliveryId);
-      
-      final txHash = await _client.sendTransaction(
-        _credentials!,
-        Transaction.callContract(
-          contract: _contract,
-          function: _contract.function('completeDelivery'),
-          parameters: [
-            deliveryIdBytes,
-            BigInt.from(rating),
-          ],
-        ),
-        chainId: 31337,
-      );
+      final provider = await _detectWalletProvider();
+      final function = _contract.function('completeDelivery');
+      final encodedData = function.encodeCall([
+        deliveryIdBytes,
+        BigInt.from(rating),
+      ]);
+      final hexData = '0x${encodedData.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join('')}';
+      final transactionData = {
+        'to': _contractAddress,
+        'data': hexData,
+        'value': '0x0',
+      };
+
+      final String txHash;
+      if (provider == 'walletconnect') {
+        try {
+          txHash = await _sendTransactionViaWalletConnect(transactionData);
+        } catch (e) {
+          final eth = ethereum;
+          if (eth == null) rethrow;
+          final accounts = await promiseToFuture<List<dynamic>>(
+            eth.request(RequestArguments(method: 'eth_accounts'))
+          );
+          if (accounts.isEmpty) rethrow;
+          txHash = await _sendTransactionViaMetaMask(transactionData);
+        }
+      } else if (provider == 'metamask') {
+        txHash = await _sendTransactionViaMetaMask(transactionData);
+      } else {
+        throw Exception('Unsupported wallet provider: $provider');
+      }
 
       print('✅ DEBUG: completeDelivery transaction submitted');
       print('  - Transaction hash: $txHash');
@@ -598,7 +649,7 @@ class ContractService extends ChangeNotifier {
         await _transactionTracker!.trackTransaction(
           txHash: txHash,
           action: 'completeDelivery',
-          providerType: 'private_key',
+          providerType: provider,
         );
       }
       

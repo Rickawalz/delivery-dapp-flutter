@@ -367,10 +367,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with TickerProvider
   }
 
   // Mock data methods - in a real app, this would come from the blockchain
-  List<Delivery> _getMockAvailableDeliveries() {
-    return [];
-  }
-
   List<Delivery> _getMockActiveJobs() {
     return [];
   }

@@ -269,37 +269,12 @@ async function main() {
   console.log(`   - Chain ID: 31337`);
   console.log(`   - Currency Symbol: ETH`);
   
-  // ========== AUTO-UPDATE CONTRACT SERVICE ==========
-  
   if (localIP !== 'Unknown') {
-    console.log("\n🔧 Auto-updating Contract Service...");
-    try {
-      const contractServicePath = path.join(__dirname, '../../app/lib/services/blockchain/contract_service.dart');
-      const rpcUrl = `http://${localIP}:8545`;
-      
-      // Read the current contract service file
-      let contractServiceContent = fs.readFileSync(contractServicePath, 'utf8');
-      
-      // Replace the HARDHAT_RPC_IP global variable
-      const oldPattern = /const String HARDHAT_RPC_IP = '[^']*';/;
-      const newPattern = `const String HARDHAT_RPC_IP = '${localIP}';`;
-      
-      if (oldPattern.test(contractServiceContent)) {
-        contractServiceContent = contractServiceContent.replace(oldPattern, newPattern);
-        
-        // Write the updated content back
-        fs.writeFileSync(contractServicePath, contractServiceContent, 'utf8');
-        
-        console.log(`✅ Contract Service updated with IP: ${localIP}`);
-        console.log(`   📍 RPC URL: ${rpcUrl}`);
-        console.log(`   📁 File: ${contractServicePath}`);
-      } else {
-        console.log('⚠️  Could not find HARDHAT_RPC_IP variable in contract service');
-        console.log('   Make sure the global variable exists: const String HARDHAT_RPC_IP = \'...\';');
-      }
-    } catch (error) {
-      console.log('❌ Failed to update Contract Service:', error);
-    }
+    const devHostPath = path.join(__dirname, "../../app/assets/config/dev_host.json");
+    fs.mkdirSync(path.dirname(devHostPath), { recursive: true });
+    fs.writeFileSync(devHostPath, JSON.stringify({ host: localIP }, null, 2) + "\n");
+    console.log(`\n✅ Development RPC host saved: ${localIP}`);
+    console.log(`   📁 File: ${devHostPath}`);
   }
 
   // ========== DISPLAY RESULTS FOR THESIS ==========
@@ -374,7 +349,15 @@ async function main() {
 
   fs.writeFileSync(configPath, JSON.stringify(deploymentInfo, null, 2));
 
+  const abiSource = path.join(
+    __dirname,
+    "../artifacts/contracts/core/SimpleDeliverySystem.sol/SimpleDeliverySystem.json"
+  );
+  const abiDest = path.join(__dirname, "../../app/assets/abi/SimpleDeliverySystem.json");
+  fs.copyFileSync(abiSource, abiDest);
+
   console.log("\n📄 Deployment info saved to:", configPath);
+  console.log("📄 SimpleDeliverySystem ABI copied to:", abiDest);
   console.log("\n✅ Thesis demonstration deployment complete!");
   console.log("\n📚 Ready for:");
   console.log("  - Live thesis defense demo");

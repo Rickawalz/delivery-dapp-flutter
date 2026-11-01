@@ -71,6 +71,7 @@ Future<void> _createAdminUser() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await loadDevHardhatHost();
   
   // Initialize Firebase
   await initializeFirebase();
