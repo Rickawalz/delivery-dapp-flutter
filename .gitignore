@@ -1,4 +1,4 @@
-R# Flutter/Dart
+# Flutter/Dart
 **/build/
 **/.dart_tool/
 **/.flutter-plugins
@@ -55,4 +55,14 @@ app/assets/config/dev_host.json
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db 
+Thumbs.db
+# Cursor / AI editor files (local only, never committed)
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.specstory/
+.history/
+
+# Local dev files written by deploy scripts
+app/assets/config/dev_host.json
