@@ -18,7 +18,7 @@ Then, from `app`:
 flutter run -d chrome --web-browser-flag="--disable-web-security"
 ```
 
-On the local Hardhat node, account #0 is the deployer and the Bootstrap founder. Account #1 is the hybrid council when `HYBRID_COUNCIL_ADDRESS` is not set. Further accounts can be used as customers and drivers.
+On the local Hardhat node, account #0 is the deployer and the Bootstrap founder. Account #1 is the hybrid council when `HYBRID_COUNCIL_ADDRESS` is not set. Off localhost, `HYBRID_COUNCIL_ADDRESS` must be a Safe-compatible multisig with a threshold of at least 2 and at least 3 owners. Further accounts can be used as customers and drivers.
 
 `deploy-thesis.ts` writes the detected LAN address to `app/assets/config/dev_host.json`. That file is git-ignored. When it is absent, the app uses `10.0.2.2`, which is the Android emulator's route to the host. The script also copies the `SimpleDeliverySystem` ABI into `app/assets/abi/SimpleDeliverySystem.json`.
 
@@ -62,6 +62,12 @@ A token holder proposes an action on `SimpleDeliverySystem`, votes, and after th
 
 These contracts are not upgradeable. There is no proxy, and the contract addresses stored at construction cannot be changed. Replacing a contract would require a governance-approved redeployment. The new deployment does not take the place of the contracts already on chain.
 
-## Known limitation
+## Known prototype limitations
 
-Customers confirm their own deliveries. Colluding accounts, including Sybil wallets, could create self-dealing deliveries to earn RLE and inflate the delivery, driver, and GMV totals that advance the phase. The reward limits slow this per address: 10 minutes between deliveries, 50 deliveries per day, a 500 meter minimum, and a 30 kilometer distance cap. Those limits do not prevent the same pattern across many addresses.
+- The Flutter app does not provide a governance interface. It does not show phase status or call `advancePhase`. Creating proposals, delegating, and voting must be done through scripts or an external governor interface.
+- The Hybrid controller must be a real multisignature wallet (for example a Safe with threshold at least 2) in any production or public-testnet deployment. On localhost it is a single Hardhat test account.
+- Contracts are not upgradeable. Replacing one requires a governance-approved redeployment.
+- Customers confirm deliveries, so colluding accounts (Sybil wallets) could create self-dealing deliveries to earn RLE and inflate milestone metrics. Reward limits slow this per address but do not prevent it across many addresses.
+- Firestore rules and password handling are development-only, not production-ready.
+- Three gas-threshold tests fail (`processReward`, `addCheckpoint`, and the full delivery flow). Measured values are reported instead of loosening the thresholds.
+- No independent security audit has been performed.

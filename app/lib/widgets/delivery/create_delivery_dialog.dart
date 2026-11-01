@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../services/delivery/delivery_service.dart';
 import '../../services/blockchain/walletconnect_service.dart';
-import '../../utils/rel_utils.dart';
+import '../../utils/rle_utils.dart';
 import '../common/transaction_status_widget.dart';
 
 /// A multi-step dialog widget for creating new delivery requests.
@@ -915,7 +915,9 @@ class _CreateDeliveryDialogState extends State<CreateDeliveryDialog> {
         final errorMessage = e.toString();
         String userFriendlyMessage = 'Failed to create delivery';
         
-        if (errorMessage.contains('timeout')) {
+        if (errorMessage.contains('would likely revert')) {
+          userFriendlyMessage = errorMessage;
+        } else if (errorMessage.contains('timeout')) {
           userFriendlyMessage = 'Transaction timeout. The transaction may still be pending. Please check your wallet.';
         } else if (errorMessage.contains('reverted')) {
           userFriendlyMessage = 'Transaction was rejected by the blockchain. Please check your inputs and try again.';

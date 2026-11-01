@@ -56,7 +56,7 @@ class AnalyticsService {
         'pickupAddress': pickupAddress,
         'deliveryAddress': deliveryAddress,
         'priceWei': priceWei.toString(),
-        'priceTokenSymbol': 'REL',
+        'priceTokenSymbol': 'RLE',
         'description': description,
         'status': status,
         'createdAt': createdAt ?? FieldValue.serverTimestamp(),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/delivery.dart';
-import '../../utils/rel_utils.dart';
+import '../../utils/rle_utils.dart';
 
 /// A card widget that displays delivery information in a visually appealing format.
 /// 

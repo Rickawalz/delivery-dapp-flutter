@@ -26,10 +26,10 @@ This application is designed to answer three key research questions:
 - **Backend**: Firebase Firestore
 - **Blockchain**: Ethereum (via web3dart)
 - **Wallet Integration**: MetaMask, WalletConnect
-- **Token**: REL (custom ERC-20 token)
+- **Token**: RLE (custom ERC-20 token)
 
 ### Key Components
-- **Smart Contracts**: SimpleDeliverySystem, DeliveryToken, RatingSystem
+- **Smart Contracts**: DeliveryToken, DeliveryTrackingSystem, RatingSystem, BalancedRewardSystem, SimpleDeliverySystem, DecentralizationPhase, RLEGovernor, and TimelockController
 - **State Management**: Provider pattern
 - **Navigation**: GoRouter
 - **Analytics**: Firestore-based data collection
@@ -59,11 +59,7 @@ flutter pub get
 
 ### 3. Blockchain Configuration
 
-The app automatically detects contract addresses from:
-- `assets/config/contracts.localhost.json` (for local development)
-- `assets/config/contracts.json` (for production)
-
-Ensure your contract addresses are correctly configured in these files.
+The app loads contract addresses from `assets/config/contracts.localhost.json`, then `assets/config/contracts.json`. In development it uses git-ignored `assets/config/dev_host.json` when that file exists, and otherwise `10.0.2.2`.
 
 ### 4. Environment Variables
 
@@ -81,12 +77,10 @@ ENABLE_ANALYTICS=true
 
 ### 5. Start Hardhat Node
 
-```bash
-# Start Hardhat node on port 8545
-npx hardhat node --port 8545
+From the `blockchain/` directory:
 
-# For WalletConnect/mobile testing, use:
-npx hardhat node --port 8545 --hostname 0.0.0.0
+```bash
+npx hardhat node --hostname 0.0.0.0
 ```
 
 ### 6. Run the Application
@@ -101,28 +95,26 @@ flutter run
 
 ### 7. Setup MetaMask Network
 
-The app provides one-click network setup:
+Add the local network in MetaMask by hand:
 
-1. **Automatic Setup**: Click "Setup Hardhat Network" in the app
-2. **Manual Setup**: Add network in MetaMask:
-   - Network Name: Hardhat Local
-   - RPC URL: http://localhost:8545
-   - Chain ID: 31337 (0x7A69)
-   - Currency Symbol: ETH
+1. Network Name: Hardhat Local
+2. RPC URL: `http://127.0.0.1:8545` on the host machine, or the host in `dev_host.json` for a device
+3. Chain ID: 31337 (0x7A69)
+4. Currency Symbol: ETH
 
 ### 8. Import Test Accounts
 
-Import Hardhat test accounts into MetaMask:
+These are the public Hardhat test keys.
 
-**Customer Account:**
+**Deployer and Bootstrap founder (account #0):**
 - Address: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
 - Private Key: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 
-**Driver Account:**
+**Localhost hybrid council (account #1):**
 - Address: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`
 - Private Key: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`
 
-More test accounts are available in the app's network setup widget.
+Further Hardhat accounts can be used as customers and drivers.
 
 ## 📊 Data Model
 
@@ -147,7 +139,7 @@ More test accounts are available in the app's network setup widget.
   "pickupAddress": "string",
   "deliveryAddress": "string",
   "priceWei": "string",
-  "priceTokenSymbol": "REL",
+  "priceTokenSymbol": "RLE",
   "description": "string",
   "status": "pending|accepted|inTransit|delivered|cancelled",
   "createdAt": "timestamp",
@@ -219,9 +211,8 @@ More test accounts are available in the app's network setup widget.
 
 ### 2. Delivery Management
 - **Create Delivery**: Multi-step form with validation
-- **Accept Delivery**: Driver acceptance workflow
 - **Track Status**: Real-time status updates
-- **Complete Delivery**: Final delivery confirmation
+- **Complete Delivery**: The customer confirms completion. During Bootstrap the founder may also complete it. There is no contract accept step. The app's accept path is a placeholder.
 
 ### 3. Analytics Dashboard
 - **Transparency Metrics**: Event coverage, audit trails
@@ -238,18 +229,18 @@ More test accounts are available in the app's network setup widget.
 
 ### Customer Flow
 1. Connect wallet (MetaMask/WalletConnect)
-2. Create delivery request with REL payment
+2. Create a delivery. Payment is recorded in fiat cents; rewards are paid in RLE
 3. Track delivery status
 4. View delivery history
 5. Access analytics dashboard
 
 ### Driver Flow
 1. Connect wallet
-2. View available deliveries
-3. Accept delivery
-4. Update delivery status
-5. Complete delivery
-6. View earnings and analytics
+2. View deliveries
+3. Update delivery status
+4. View earnings and analytics
+
+The customer, or the founder during Bootstrap, confirms completion on the contract. The driver accept action in the app does not call the contract.
 
 ## 🔍 Research Data Collection
 
@@ -300,8 +291,8 @@ app/
 
 ### Manual Testing
 1. **Wallet Connection**: Test MetaMask and WalletConnect
-2. **Delivery Creation**: Create deliveries with different REL amounts
-3. **Driver Operations**: Accept and complete deliveries
+2. **Delivery Creation**: Create deliveries with different RLE reward outcomes
+3. **Driver Operations**: Review deliveries. Completion is a customer confirmation, not a driver accept call.
 4. **Analytics**: Verify data collection in Firestore
 5. **Error Handling**: Test network failures and edge cases
 
@@ -340,6 +331,16 @@ Enable debug logging by setting:
 ```dart
 debugPrint('Debug: $message');
 ```
+
+## Known prototype limitations
+
+- The Flutter app does not provide a governance interface. It does not show phase status or call `advancePhase`. Creating proposals, delegating, and voting must be done through scripts or an external governor interface.
+- The Hybrid controller must be a real multisignature wallet (for example a Safe with threshold at least 2) in any production or public-testnet deployment. On localhost it is a single Hardhat test account.
+- Contracts are not upgradeable. Replacing one requires a governance-approved redeployment.
+- Customers confirm deliveries, so colluding accounts (Sybil wallets) could create self-dealing deliveries to earn RLE and inflate milestone metrics. Reward limits slow this per address but do not prevent it across many addresses.
+- Firestore rules and password handling are development-only, not production-ready.
+- Three gas-threshold tests fail (`processReward`, `addCheckpoint`, and the full delivery flow). Measured values are reported instead of loosening the thresholds.
+- No independent security audit has been performed.
 
 ## 📄 License
 

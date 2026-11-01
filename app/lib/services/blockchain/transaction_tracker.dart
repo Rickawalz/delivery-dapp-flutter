@@ -236,8 +236,8 @@ class TransactionTracker extends ChangeNotifier {
     return transaction?.nativeFeeWei;
   }
 
-  /// Get transaction cost in REL (if applicable)
-  BigInt? getTransactionCostRel(String txHash) {
+  /// Get transaction cost in RLE (if applicable)
+  BigInt? getTransactionCostRle(String txHash) {
     if (_transactions[txHash] == null) return null;
     // Token price conversion needs an oracle, which this app does not have.
     return null;

@@ -161,7 +161,7 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> with TickerProv
           _buildMetricsCard('Cost Analysis', [
             _buildMetricItem('Total Gas Used', '${_getTotalGasUsed(transactions)}'),
             _buildMetricItem('Average Gas Cost', '${_getAverageGasCost(transactions)} ETH'),
-            _buildMetricItem('Total REL Transacted', '${_getTotalRelTransacted(transactions)} REL'),
+            _buildMetricItem('Total RLE Transacted', '${_getTotalRleTransacted(transactions)} RLE'),
             _buildMetricItem('Cost per Delivery', '${_getCostPerDelivery(transactions)} ETH'),
           ]),
           
@@ -534,8 +534,8 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> with TickerProv
     return (total / transactions.length).toStringAsFixed(4);
   }
 
-  String _getTotalRelTransacted(List<Map<String, dynamic>> transactions) {
-    // Calculate total REL transacted
+  String _getTotalRleTransacted(List<Map<String, dynamic>> transactions) {
+    // Calculate total RLE transacted
     return '0.0'; // Placeholder
   }
 

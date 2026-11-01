@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:web3dart/web3dart.dart';
@@ -34,6 +35,14 @@ Future<void> loadDevHardhatHost() async {
   } catch (_) {
     devHardhatHost = HARDHAT_RPC_IP;
   }
+}
+
+class GasEstimationException implements Exception {
+  GasEstimationException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 class ContractService extends ChangeNotifier {
@@ -97,26 +106,25 @@ class ContractService extends ChangeNotifier {
     if (_walletConnectService == null || !_walletConnectService!.isConnected) {
       throw Exception('WalletConnect not available or not connected');
     }
+
+    final from = _walletConnectService!.walletAddress;
+    if (from == null || from.isEmpty) {
+      throw GasEstimationException('Cannot estimate gas because the wallet address is missing.');
+    }
+    final gas = await _gasLimitHex(transactionData, from);
     
     try {
+      final chainId = _walletConnectService!.chainId!;
       // Add timeout to prevent hanging
       final result = await Future.any([
         Future(() async {
-          // Get network-appropriate gas settings
-          final chainId = _walletConnectService!.chainId!;
-          final gasSettings = _getGasSettingsForChain(chainId);
-          
-          print('  🔧 Using gas settings for chain $chainId:');
-          print('    - Gas: ${gasSettings['gas']}');
-          print('    - Gas Price: ${gasSettings['gasPrice']}');
-          
           // Check if session is ready
           print('  📋 Session details:');
           print('    - Topic: ${_walletConnectService!.currentSession!.topic}');
-          print('    - Wallet address: ${_walletConnectService!.walletAddress}');
+          print('    - Wallet address: $from');
           print('    - Chain ID: $chainId');
           
-          // Try the original WalletConnect request method with better error handling
+          // The wallet fills EIP-1559 fees. Only the estimated gas limit is set here.
           final result = await _walletConnectService!.web3App!.request(
             topic: _walletConnectService!.currentSession!.topic,
             chainId: 'eip155:$chainId',
@@ -124,12 +132,11 @@ class ContractService extends ChangeNotifier {
               method: 'eth_sendTransaction',
               params: [
                 {
-                  'from': _walletConnectService!.walletAddress,
+                  'from': from,
                   'to': transactionData['to'],
                   'data': transactionData['data'],
                   'value': transactionData['value'],
-                  'gas': gasSettings['gas'],
-                  'gasPrice': gasSettings['gasPrice'],
+                  'gas': gas,
                 }
               ],
             ),
@@ -142,53 +149,79 @@ class ContractService extends ChangeNotifier {
       
       print('✅ WalletConnect transaction successful');
       return result.toString();
+    } on GasEstimationException {
+      rethrow;
     } catch (e) {
       print('❌ WalletConnect transaction failed: $e');
       throw Exception('WalletConnect transaction failed: $e');
     }
   }
-  
-  /// Get gas settings appropriate for the given chain
-  Map<String, String> _getGasSettingsForChain(int chainId) {
-    switch (chainId) {
-      case 31337: // Hardhat (Development)
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
-      case 11155111: // Sepolia (Testnet)
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
-      case 1: // Ethereum Mainnet
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x4a817c800', // 20 gwei (higher for mainnet)
-        };
-      case 137: // Polygon
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
-      case 42161: // Arbitrum One
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
-      case 10: // Optimism
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
-      default:
-        // Default settings for unknown networks
-        print('⚠️ Using default gas settings for unknown chain ID: $chainId');
-        return {
-          'gas': '0x5208', // 21,000 gas
-          'gasPrice': '0x3b9aca00', // 1 gwei
-        };
+
+  /// Estimate gas for this exact call, then add 20 percent.
+  /// A failed estimate means the call would revert, so nothing is sent.
+  Future<String> _gasLimitHex(Map<String, dynamic> transactionData, String from) async {
+    final to = transactionData['to'];
+    final data = transactionData['data'];
+    if (to is! String || to.isEmpty || data is! String || data.isEmpty) {
+      throw GasEstimationException(
+        'Cannot estimate gas because the transaction is missing its destination or calldata.',
+      );
     }
+    final valueRaw = transactionData['value'];
+    final valueHex = valueRaw is String && valueRaw.isNotEmpty ? valueRaw : '0x0';
+
+    final BigInt estimated;
+    try {
+      estimated = await _client.estimateGas(
+        sender: EthereumAddress.fromHex(from),
+        to: EthereumAddress.fromHex(to),
+        data: _decodeHex(data),
+        value: EtherAmount.inWei(_decodeHexInt(valueHex)),
+      );
+    } catch (e) {
+      throw GasEstimationException(
+        'This transaction would likely revert, so it was not sent. ${_revertReason(e)}',
+      );
+    }
+
+    final withBuffer = estimated * BigInt.from(120) ~/ BigInt.from(100);
+    if (Environment.isDevelopment) {
+      print('Estimated gas: $estimated; sending $withBuffer after a 20% buffer');
+    }
+    return '0x${withBuffer.toRadixString(16)}';
+  }
+
+  String _revertReason(Object error) {
+    final text = error.toString();
+    final match = RegExp(
+      r'execution reverted:?\s*([^"\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+    return text;
+  }
+
+  Uint8List _decodeHex(String hexString) {
+    var hex = hexString.startsWith('0x') || hexString.startsWith('0X')
+        ? hexString.substring(2)
+        : hexString;
+    if (hex.isEmpty) return Uint8List(0);
+    if (hex.length.isOdd) hex = '0$hex';
+    final bytes = Uint8List(hex.length ~/ 2);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return bytes;
+  }
+
+  BigInt _decodeHexInt(String hexString) {
+    final hex = hexString.startsWith('0x') || hexString.startsWith('0X')
+        ? hexString.substring(2)
+        : hexString;
+    if (hex.isEmpty) return BigInt.zero;
+    return BigInt.parse(hex, radix: 16);
   }
   
   /// Send transaction via MetaMask
@@ -199,24 +232,21 @@ class ContractService extends ChangeNotifier {
     if (eth == null) {
       throw Exception('MetaMask not available');
     }
+
+    final from = transactionData['from'] as String? ?? await _getCurrentAccount();
+    if (from == null || from.isEmpty) {
+      throw GasEstimationException('Cannot estimate gas because no account is connected.');
+    }
+    final gas = await _gasLimitHex(transactionData, from);
     
     try {
-      // Get network-appropriate gas settings
-      final chainId = await _client.getNetworkId();
-      final gasSettings = _getGasSettingsForChain(chainId);
-      
-      print('  🔧 Using gas settings for chain $chainId:');
-      print('    - Gas: ${gasSettings['gas']}');
-      print('    - Gas Price: ${gasSettings['gasPrice']}');
-      
-      // Create complete transaction object with gas settings
+      // The wallet fills EIP-1559 fees. Only the estimated gas limit is set here.
       final completeTransaction = {
-        'from': transactionData['from'] ?? await _getCurrentAccount(),
+        'from': from,
         'to': transactionData['to'],
         'data': transactionData['data'],
         'value': transactionData['value'],
-        'gas': gasSettings['gas'],
-        'gasPrice': gasSettings['gasPrice'],
+        'gas': gas,
       };
       
       final result = await promiseToFuture<String>(
@@ -228,6 +258,8 @@ class ContractService extends ChangeNotifier {
       
       print('✅ MetaMask transaction successful');
       return result;
+    } on GasEstimationException {
+      rethrow;
     } catch (e) {
       print('❌ MetaMask transaction failed: $e');
       throw Exception('MetaMask transaction failed: $e');
@@ -513,6 +545,8 @@ class ContractService extends ChangeNotifier {
       if (provider == 'walletconnect') {
         try {
           txHash = await _sendTransactionViaWalletConnect(transactionData);
+        } on GasEstimationException {
+          rethrow;
         } catch (e) {
           print('⚠️ WalletConnect failed, trying MetaMask fallback...');
           // Try MetaMask as fallback
@@ -578,6 +612,8 @@ class ContractService extends ChangeNotifier {
         deliveryId: deliveryId,
         transaction: transactionResult,
       );
+    } on GasEstimationException {
+      rethrow;
     } catch (e, stackTrace) {
       print('\n❌ DEBUG: Transaction failed!');
       print('  - Error type: ${e.runtimeType}');
@@ -622,10 +658,12 @@ class ContractService extends ChangeNotifier {
         'value': '0x0',
       };
 
-      final String txHash;
+      String txHash;
       if (provider == 'walletconnect') {
         try {
           txHash = await _sendTransactionViaWalletConnect(transactionData);
+        } on GasEstimationException {
+          rethrow;
         } catch (e) {
           final eth = ethereum;
           if (eth == null) rethrow;
@@ -676,6 +714,8 @@ class ContractService extends ChangeNotifier {
         deliveryId: deliveryId,
         transaction: transactionResult,
       );
+    } on GasEstimationException {
+      rethrow;
     } catch (e, stackTrace) {
       print('❌ DEBUG: completeDelivery failed');
       print('  - Error: $e');

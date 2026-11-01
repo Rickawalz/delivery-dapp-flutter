@@ -206,6 +206,11 @@ class DeliveryService extends ChangeNotifier {
       print('════════════════════════════════════════\n');
       
       return delivery;
+    } on GasEstimationException catch (e) {
+      _error = e.message;
+      _isLoading = false;
+      notifyListeners();
+      rethrow;
     } catch (e, stackTrace) {
       print('\n════════════════════════════════════════');
       print('❌ DEBUG: createDelivery FAILED');
@@ -268,6 +273,12 @@ class DeliveryService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
+    } on GasEstimationException catch (e) {
+      print('❌ DEBUG: completeDelivery was not sent: $e');
+      _error = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return false;
     } catch (e) {
       print('❌ DEBUG: completeDelivery failed: $e');
       _error = 'Failed to complete delivery: ${e.toString()}';

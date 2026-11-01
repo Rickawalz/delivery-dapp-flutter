@@ -14,7 +14,8 @@ import * as os from "os";
  *
  * Env:
  * TIMELOCK_MIN_DELAY      seconds; default 172800 (2 days)
- * HYBRID_COUNCIL_ADDRESS  Safe address on testnet; localhost defaults to Hardhat account #1
+ * HYBRID_COUNCIL_ADDRESS  Safe (or compatible) multisig off localhost.
+ *                          Localhost defaults to Hardhat account #1.
  */
 
 interface DeploymentResult {
@@ -45,6 +46,55 @@ function readTimelockMinDelay(): bigint {
   return BigInt(raw.trim());
 }
 
+const SAFE_COUNCIL_ABI = [
+  "function getThreshold() view returns (uint256)",
+  "function getOwners() view returns (address[])",
+];
+
+async function assertSafeCouncil(council: string, deployer: string): Promise<void> {
+  const code = await ethers.provider.getCode(council);
+  if (code === "0x") {
+    throw new Error(
+      "HYBRID_COUNCIL_ADDRESS must be a contract, not a plain wallet (EOA)"
+    );
+  }
+
+  const safe = new ethers.Contract(council, SAFE_COUNCIL_ABI, ethers.provider);
+  let threshold: bigint;
+  let owners: string[];
+  try {
+    const rawThreshold = await safe.getThreshold.staticCall();
+    const rawOwners = await safe.getOwners.staticCall();
+    if (typeof rawThreshold !== "bigint" || !Array.isArray(rawOwners)) {
+      throw new Error("unusable Safe response");
+    }
+    threshold = rawThreshold;
+    owners = rawOwners.map((owner: string) => ethers.getAddress(owner));
+  } catch {
+    throw new Error(
+      "Hybrid council must be a Safe (or compatible) multisignature wallet"
+    );
+  }
+
+  if (threshold < 2n) {
+    throw new Error(
+      `Hybrid council Safe threshold must be at least 2, got ${threshold.toString()}`
+    );
+  }
+  if (owners.length < 3) {
+    throw new Error(
+      `Hybrid council Safe must have at least 3 owners, got ${owners.length}`
+    );
+  }
+  const uniqueOwners = new Set(owners.map((owner) => owner.toLowerCase()));
+  if (uniqueOwners.size === 1 && uniqueOwners.has(deployer.toLowerCase())) {
+    throw new Error("HYBRID_COUNCIL_ADDRESS deployer must not be the only Safe owner");
+  }
+
+  console.log("Hybrid council Safe threshold:", threshold.toString());
+  console.log("Hybrid council Safe owners:", owners.join(", "));
+}
+
 async function resolveHybridCouncil(deployer: string, localhostFallback: string): Promise<string> {
   const fromEnv = process.env.HYBRID_COUNCIL_ADDRESS?.trim() ?? "";
   const chainId = (await ethers.provider.getNetwork()).chainId;
@@ -58,7 +108,15 @@ async function resolveHybridCouncil(deployer: string, localhostFallback: string)
   if (council.toLowerCase() === deployer.toLowerCase()) {
     throw new Error("HYBRID_COUNCIL_ADDRESS must not be the deployer");
   }
-  return ethers.getAddress(council);
+  const checksummed = ethers.getAddress(council);
+  if (chainId === 31337n) {
+    console.log(
+      "Hybrid council is a single test account — production deployments must use a multisignature wallet."
+    );
+    return checksummed;
+  }
+  await assertSafeCouncil(checksummed, deployer);
+  return checksummed;
 }
 
 function requireEqual(actual: string, expected: string, label: string) {
