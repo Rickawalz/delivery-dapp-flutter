@@ -9,13 +9,15 @@ This document outlines the complete integration of all smart contracts in the Ma
 The `SimpleDeliverySystem` contract serves as the central orchestrator, connecting all other contracts:
 
 ```solidity
-contract SimpleDeliverySystem is Ownable {
+contract SimpleDeliverySystem {
     BalancedRewardSystem public rewardSystem;
     DeliveryTrackingSystem public trackingSystem;
     RatingSystem public ratingSystem;
     DecentralizationPhase public decentralizationPhase;
 }
 ```
+
+`SimpleDeliverySystem` is not `Ownable`. Phase-specific calls use `currentController()` on `DecentralizationPhase`.
 
 ## Contract Connections
 
@@ -106,12 +108,13 @@ contract SimpleDeliverySystem is Ownable {
 
 ### **Delivery Completion Flow**
 1. `completeDelivery()` called on SimpleDeliverySystem
-2. Validates delivery status and rating
-3. Updates delivery record
-4. **Calls BalancedRewardSystem**: `processReward()` → mints tokens
-5. **Calls RatingSystem**: `submitRating()` → stores rating
-6. **Calls DecentralizationPhase**: `recordDelivery()` → updates metrics
-7. Emits `DeliveryCompleted` event
+2. During Bootstrap the caller must be the founder or the customer. During Hybrid and FullDAO the caller must be the customer.
+3. A disputed delivery reverts until the active controller calls `resolveDispute()`.
+4. Updates the delivery record and platform fee ledger
+5. **Calls BalancedRewardSystem**: `processReward()` → mints tokens
+6. **Calls RatingSystem**: `submitRating()` → stores rating. Only the delivery system, as owner, can submit a rating.
+7. **Calls DecentralizationPhase**: `recordDelivery()` → updates metrics and may advance one phase
+8. Emits `DeliveryCompleted` event
 
 ### **Tracking Integration**
 1. `addDeliveryCheckpoint()` called on SimpleDeliverySystem
@@ -122,33 +125,32 @@ contract SimpleDeliverySystem is Ownable {
 ## Ownership Structure
 
 ```
-Deployer
+Founder (Bootstrap controller only)
+Hybrid council (Hybrid controller only)
+TimelockController (FullDAO controller; RLEGovernor is its proposer)
     │
-    ├── SimpleDeliverySystem (Owner of all other contracts)
-    │   ├── BalancedRewardSystem (Owner of DeliveryToken)
-    │   ├── DeliveryTrackingSystem
-    │   ├── RatingSystem
-    │   └── DecentralizationPhase
-    │
-    └── DeliveryToken (Owned by BalancedRewardSystem)
+    └── SimpleDeliverySystem (no owner; checks currentController())
+        ├── BalancedRewardSystem (owner of DeliveryToken)
+        ├── DeliveryTrackingSystem
+        ├── RatingSystem
+        └── DecentralizationPhase
 ```
 
 ## Deployment Sequence
 
-1. **DeliveryToken** - Deploy first (needed by reward system)
-2. **BalancedRewardSystem** - Deploy with token address
-3. **DeliveryTrackingSystem** - Deploy standalone
-4. **RatingSystem** - Deploy standalone
-5. **DecentralizationPhase** - Deploy standalone
-6. **SimpleDeliverySystem** - Deploy with all contract addresses
-7. **Transfer Ownership** - Move all contracts under SimpleDeliverySystem
+1. **DeliveryToken**
+2. **TimelockController**, then **RLEGovernor**. Grant the governor proposer and canceller roles, then the deployer renounces timelock admin.
+3. **DeliveryTrackingSystem**, **RatingSystem**, and **BalancedRewardSystem**
+4. **DecentralizationPhase** with the hybrid council and the timelock
+5. **SimpleDeliverySystem** with the reward, tracking, rating, and phase addresses
+6. Transfer the token to the reward system, and transfer rewards, tracking, rating, and the phase contract to the delivery system. The delivery system itself has no owner to transfer.
 
 ## Security Considerations
 
 ### **Access Control**
-- All contracts use `onlyOwner` modifiers
-- SimpleDeliverySystem owns all other contracts
-- Prevents unauthorized access to critical functions
+- Reward, tracking, rating, and phase admin calls are `onlyOwner`, and that owner is `SimpleDeliverySystem`
+- Controller calls on `SimpleDeliverySystem` require `currentController()`
+- In FullDAO the controller is the timelock, so fee, reward rate, dispute, and incident changes are proposals on `RLEGovernor`
 
 ### **Data Integrity**
 - Input validation at each integration point
@@ -180,8 +182,8 @@ Deployer
 ## Benefits of Integration
 
 ### **Modularity**
-- Each contract has single responsibility
-- Easy to upgrade individual components
+- Each contract has a single responsibility
+- The contracts are not upgradeable. Replacing one requires a governance-approved redeployment, which does not take the place of the contracts already deployed.
 - Clear separation of concerns
 
 ### **Maintainability**
@@ -196,15 +198,12 @@ Deployer
 
 ## Future Enhancements
 
-### **Additional Integrations**
-- **StakingManager**: Integrate with reward system
-- **DeliveryNFT**: Mint NFTs for completed deliveries
-- **Governance**: Add voting mechanisms
+### **Governance**
+- `RLEGovernor` and `TimelockController` are the FullDAO path for fee, reward rate, disputes, and incidents
+- There is no proxy. A replacement contract has to be deployed again and accepted through governance.
 
-### **Advanced Features**
-- **Multi-signature**: Require multiple approvals
-- **Time locks**: Delay critical operations
-- **Upgradeability**: Proxy patterns for contract upgrades
+### **Known limitation**
+Customers confirm deliveries. Colluding accounts, including Sybil wallets, can create self-dealing deliveries that mint RLE and inflate milestone metrics. Per-address reward limits slow this. They do not stop it across many addresses.
 
 ## Conclusion
 

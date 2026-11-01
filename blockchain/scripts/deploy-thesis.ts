@@ -2,7 +2,6 @@ import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import type { SimpleDeliverySystem } from "../typechain-types";
 /**
  * Deployment script for Master's Thesis demonstration
  * 
@@ -12,6 +11,10 @@ import type { SimpleDeliverySystem } from "../typechain-types";
  * Usage:
  * Terminal 1: npx hardhat node --hostname 0.0.0.0
  * Terminal 2: npx hardhat run scripts/deploy-thesis.ts --network localhost
+ *
+ * Env:
+ * TIMELOCK_MIN_DELAY      seconds; default 172800 (2 days)
+ * HYBRID_COUNCIL_ADDRESS  Safe address on testnet; localhost defaults to Hardhat account #1
  */
 
 interface DeploymentResult {
@@ -22,21 +25,61 @@ interface DeploymentResult {
     BalancedRewardSystem: string;
     SimpleDeliverySystem: string;
     DecentralizationPhase: string;
+    RatingSystem: string;
+    TimelockController: string;
+    RLEGovernor: string;
   };
   timestamp: string;
+}
+
+const DEFAULT_TIMELOCK_MIN_DELAY = 2 * 24 * 60 * 60;
+
+function readTimelockMinDelay(): bigint {
+  const raw = process.env.TIMELOCK_MIN_DELAY;
+  if (raw === undefined || raw.trim() === "") {
+    return BigInt(DEFAULT_TIMELOCK_MIN_DELAY);
+  }
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error("TIMELOCK_MIN_DELAY must be a non-negative integer number of seconds");
+  }
+  return BigInt(raw.trim());
+}
+
+async function resolveHybridCouncil(deployer: string, localhostFallback: string): Promise<string> {
+  const fromEnv = process.env.HYBRID_COUNCIL_ADDRESS?.trim() ?? "";
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  const council = fromEnv !== "" ? fromEnv : chainId === 31337n ? localhostFallback : "";
+  if (council === "") {
+    throw new Error("HYBRID_COUNCIL_ADDRESS is required when not deploying to localhost");
+  }
+  if (!ethers.isAddress(council) || council === ethers.ZeroAddress) {
+    throw new Error("HYBRID_COUNCIL_ADDRESS must be a non-zero address");
+  }
+  if (council.toLowerCase() === deployer.toLowerCase()) {
+    throw new Error("HYBRID_COUNCIL_ADDRESS must not be the deployer");
+  }
+  return ethers.getAddress(council);
+}
+
+function requireEqual(actual: string, expected: string, label: string) {
+  if (actual.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error(`${label}: expected ${expected}, got ${actual}`);
+  }
 }
 
 async function main() {
   console.log("\n🎓 Master's Thesis - Smart Contract Deployment");
   console.log("=============================================\n");
 
-  const [deployer, driver1, driver2, customer1, customer2] = await ethers.getSigners();
+  const [deployer, councilAccount, driver1] = await ethers.getSigners();
+  const hybridCouncil = await resolveHybridCouncil(deployer.address, councilAccount.address);
+  const minDelay = readTimelockMinDelay();
 
   console.log("Deployer address:", deployer.address);
+  console.log("Hybrid council:", hybridCouncil);
+  console.log("Timelock min delay (seconds):", minDelay.toString());
   console.log("Network:", (await ethers.provider.getNetwork()).name);
   console.log("");
-
-  // ========== DEPLOY CONTRACTS ==========
 
   console.log("📝 Deploying DeliveryToken...");
   const DeliveryToken = await ethers.getContractFactory("DeliveryToken");
@@ -45,19 +88,35 @@ async function main() {
   const tokenAddress = await token.getAddress();
   console.log("✅ DeliveryToken deployed to:", tokenAddress);
 
+  console.log("\n⏱️ Deploying TimelockController...");
+  const TimelockController = await ethers.getContractFactory("TimelockController");
+  const timelock = await TimelockController.deploy(minDelay, [], [ethers.ZeroAddress], deployer.address);
+  await timelock.waitForDeployment();
+  const timelockAddress = await timelock.getAddress();
+  console.log("✅ TimelockController deployed to:", timelockAddress);
+
+  console.log("\n🗳️ Deploying RLEGovernor...");
+  const RLEGovernor = await ethers.getContractFactory("RLEGovernor");
+  const governor = await RLEGovernor.deploy(tokenAddress, timelockAddress, 1, 45818, 0);
+  await governor.waitForDeployment();
+  const governorAddress = await governor.getAddress();
+  console.log("✅ RLEGovernor deployed to:", governorAddress);
+
+  console.log("\n🔐 Granting timelock roles to the governor...");
+  const proposerRole = await timelock.PROPOSER_ROLE();
+  const cancellerRole = await timelock.CANCELLER_ROLE();
+  const adminRole = await timelock.TIMELOCK_ADMIN_ROLE();
+  await (await timelock.grantRole(proposerRole, governorAddress)).wait();
+  await (await timelock.grantRole(cancellerRole, governorAddress)).wait();
+  await (await timelock.renounceRole(adminRole, deployer.address)).wait();
+  console.log("✅ Governor can propose and cancel. Deployer renounced TIMELOCK_ADMIN_ROLE.");
+
   console.log("\n📍 Deploying DeliveryTrackingSystem...");
   const DeliveryTrackingSystem = await ethers.getContractFactory("DeliveryTrackingSystem");
   const tracking = await DeliveryTrackingSystem.deploy();
   await tracking.waitForDeployment();
   const trackingAddress = await tracking.getAddress();
   console.log("✅ DeliveryTrackingSystem deployed to:", trackingAddress);
-
-  console.log("\n💰 Deploying BalancedRewardSystem...");
-  const BalancedRewardSystem = await ethers.getContractFactory("BalancedRewardSystem");
-  const rewards = await BalancedRewardSystem.deploy(tokenAddress);
-  await rewards.waitForDeployment();
-  const rewardsAddress = await rewards.getAddress();
-  console.log("✅ BalancedRewardSystem deployed to:", rewardsAddress);
 
   console.log("\n⭐ Deploying RatingSystem...");
   const RatingSystem = await ethers.getContractFactory("RatingSystem");
@@ -66,9 +125,16 @@ async function main() {
   const ratingAddress = await rating.getAddress();
   console.log("✅ RatingSystem deployed to:", ratingAddress);
 
+  console.log("\n💰 Deploying BalancedRewardSystem...");
+  const BalancedRewardSystem = await ethers.getContractFactory("BalancedRewardSystem");
+  const rewards = await BalancedRewardSystem.deploy(tokenAddress);
+  await rewards.waitForDeployment();
+  const rewardsAddress = await rewards.getAddress();
+  console.log("✅ BalancedRewardSystem deployed to:", rewardsAddress);
+
   console.log("\n🏛️ Deploying DecentralizationPhase...");
   const DecentralizationPhase = await ethers.getContractFactory("DecentralizationPhase");
-  const phase = await DecentralizationPhase.deploy();
+  const phase = await DecentralizationPhase.deploy(hybridCouncil, timelockAddress);
   await phase.waitForDeployment();
   const phaseAddress = await phase.getAddress();
   console.log("✅ DecentralizationPhase deployed to:", phaseAddress);
@@ -80,30 +146,31 @@ async function main() {
   const deliveryAddress = await delivery.getAddress();
   console.log("✅ SimpleDeliverySystem deployed to:", deliveryAddress);
 
-  // ========== SETUP PERMISSIONS ==========
+  console.log("\n🔐 Transferring ownership...");
+  await (await token.transferOwnership(rewardsAddress)).wait();
+  await (await rewards.transferOwnership(deliveryAddress)).wait();
+  await (await tracking.transferOwnership(deliveryAddress)).wait();
+  await (await rating.transferOwnership(deliveryAddress)).wait();
+  await (await phase.transferOwnership(deliveryAddress)).wait();
 
-  console.log("\n🔐 Setting up contract permissions...");
-
-  // Transfer token ownership to reward system
-  console.log("  ↳ Transferring DeliveryToken ownership to BalancedRewardSystem...");
-  await token.transferOwnership(rewardsAddress);
-
-  // Transfer reward system ownership to delivery system
-  console.log("  ↳ Transferring BalancedRewardSystem ownership to SimpleDeliverySystem...");
-  await rewards.transferOwnership(deliveryAddress);
-
-  // Transfer tracking system ownership to delivery system
-  console.log("  ↳ Transferring DeliveryTrackingSystem ownership to SimpleDeliverySystem...");
-  await tracking.transferOwnership(deliveryAddress);
-
-  // Note: RatingSystem doesn't have ownership (no Ownable inheritance)
-  console.log("  ↳ RatingSystem has no ownership (public contract)");
-
-  // Transfer decentralization phase ownership to delivery system
-  console.log("  ↳ Transferring DecentralizationPhase ownership to SimpleDeliverySystem...");
-  await phase.transferOwnership(deliveryAddress);
-
-  console.log("✅ Permissions configured");
+  requireEqual(await phase.owner(), deliveryAddress, "phase.owner");
+  requireEqual(await rating.owner(), deliveryAddress, "rating.owner");
+  requireEqual(await tracking.owner(), deliveryAddress, "tracking.owner");
+  requireEqual(await rewards.owner(), deliveryAddress, "rewards.owner");
+  requireEqual(await token.owner(), rewardsAddress, "token.owner");
+  requireEqual(await phase.currentController(), deployer.address, "phase.currentController");
+  requireEqual(await phase.hybridCouncil(), hybridCouncil, "phase.hybridCouncil");
+  requireEqual(await phase.daoTimelock(), timelockAddress, "phase.daoTimelock");
+  if (!(await timelock.hasRole(proposerRole, governorAddress))) {
+    throw new Error("governor is missing PROPOSER_ROLE");
+  }
+  if (!(await timelock.hasRole(cancellerRole, governorAddress))) {
+    throw new Error("governor is missing CANCELLER_ROLE");
+  }
+  if (await timelock.hasRole(adminRole, deployer.address)) {
+    throw new Error("deployer still has TIMELOCK_ADMIN_ROLE");
+  }
+  console.log("✅ Ownership and timelock roles verified");
 
   // ========== SKIP TEST DATA CREATION ==========
   
@@ -271,6 +338,17 @@ async function main() {
 
   // ========== SAVE DEPLOYMENT INFO ==========
 
+  console.log("\n📍 Deployed addresses");
+  console.log("  DeliveryToken:          ", tokenAddress);
+  console.log("  TimelockController:     ", timelockAddress);
+  console.log("  RLEGovernor:            ", governorAddress);
+  console.log("  DeliveryTrackingSystem: ", trackingAddress);
+  console.log("  RatingSystem:           ", ratingAddress);
+  console.log("  BalancedRewardSystem:   ", rewardsAddress);
+  console.log("  DecentralizationPhase:  ", phaseAddress);
+  console.log("  SimpleDeliverySystem:   ", deliveryAddress);
+  console.log("  Hybrid council:         ", hybridCouncil);
+
   const deploymentInfo: DeploymentResult = {
     network: "localhost",
     contracts: {
@@ -279,6 +357,9 @@ async function main() {
       BalancedRewardSystem: rewardsAddress,
       SimpleDeliverySystem: deliveryAddress,
       DecentralizationPhase: phaseAddress,
+      RatingSystem: ratingAddress,
+      TimelockController: timelockAddress,
+      RLEGovernor: governorAddress,
     },
     timestamp: new Date().toISOString(),
   };

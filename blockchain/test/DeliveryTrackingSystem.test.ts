@@ -41,7 +41,7 @@ describe("DeliveryTrackingSystem - Thesis Tests", function () {
       await expect(
         tracking.connect(driver).addCheckpoint(deliveryId, locationHash1, "pickup")
       ).to.emit(tracking, "LocationCheckpoint")
-        .withArgs(deliveryId, locationHash1, anyValue, "pickup");
+        .withArgs(deliveryId, locationHash1, (stamp: bigint) => stamp > 0n, "pickup");
       
       // Verify stored
       const current = await tracking.getCurrentLocation(deliveryId);
@@ -58,6 +58,10 @@ describe("DeliveryTrackingSystem - Thesis Tests", function () {
       ];
 
       for (let i = 0; i < locations.length; i++) {
+        if (i > 0) {
+          await ethers.provider.send("evm_increaseTime", [61]);
+          await ethers.provider.send("evm_mine", []);
+        }
         await tracking.connect(driver).addCheckpoint(
           deliveryId,
           locations[i],
@@ -127,10 +131,10 @@ describe("DeliveryTrackingSystem - Thesis Tests", function () {
       await expect(
         tracking.connect(driver).raiseDispute(deliveryId, reason)
       ).to.emit(tracking, "DisputeRaised")
-        .withArgs(deliveryId, driverAddress, reason, anyValue);
+        .withArgs(deliveryId, driverAddress, reason, (stamp: bigint) => stamp > 0n);
       
       const current = await tracking.getCurrentLocation(deliveryId);
-      expect(current.isDisputed).to.be.true;
+      expect(current.disputed).to.be.true;
     });
 
     it("Should prevent duplicate disputes", async function () {
@@ -172,7 +176,4 @@ describe("DeliveryTrackingSystem - Thesis Tests", function () {
     });
   });
 });
-
-// Helper for matching any value in events
-const anyValue = undefined;
 

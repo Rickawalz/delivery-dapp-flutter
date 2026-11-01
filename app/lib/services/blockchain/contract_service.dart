@@ -17,7 +17,7 @@ import '../../constants/environment.dart';
 
 // AUTO-GENERATED: This IP is automatically updated by deploy-thesis.ts
 // Only used in development mode (Environment.isDevelopment = true)
-const String HARDHAT_RPC_IP = '10.0.2.2';
+const String HARDHAT_RPC_IP = '172.20.1.131';
 
 class ContractService extends ChangeNotifier {
   Web3Client _client;

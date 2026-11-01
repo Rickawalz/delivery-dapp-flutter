@@ -27,8 +27,8 @@ describe("DeliveryToken", function () {
 
   describe("Token Properties", function () {
     it("Should have correct name and symbol", async function () {
-      expect(await deliveryToken.name()).to.equal("Delivery Token");
-      expect(await deliveryToken.symbol()).to.equal("DLV");
+      expect(await deliveryToken.name()).to.equal("Reliable Logistics Exchange");
+      expect(await deliveryToken.symbol()).to.equal("RLE");
     });
 
     it("Should have correct decimals", async function () {

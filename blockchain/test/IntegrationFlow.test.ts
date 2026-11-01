@@ -7,6 +7,11 @@ import { DeliveryTrackingSystem } from "../typechain-types/contracts/core/Delive
 import { SimpleDeliverySystem } from "../typechain-types/contracts/core/SimpleDeliverySystem";
 import { DecentralizationPhase } from "../typechain-types/contracts/governance/DecentralizationPhase";
 
+async function waitSeconds(seconds: number) {
+  await ethers.provider.send("evm_increaseTime", [seconds]);
+  await ethers.provider.send("evm_mine", []);
+}
+
 /**
  * Integration Test Suite
  * 
@@ -30,7 +35,10 @@ describe("Complete System Integration - Thesis Demonstration", function () {
   let customer1Address: string;
 
   before(async function () {
-    [owner, driver1, customer1] = await ethers.getSigners();
+    const signers = await ethers.getSigners();
+    [owner, driver1, customer1] = signers;
+    const council = signers[3];
+    const timelockAccount = signers[4];
     driver1Address = await driver1.getAddress();
     customer1Address = await customer1.getAddress();
 
@@ -47,27 +55,40 @@ describe("Complete System Integration - Thesis Demonstration", function () {
     await trackingSystem.waitForDeployment();
     console.log("    ✅ DeliveryTrackingSystem deployed");
 
+    const Rating = await ethers.getContractFactory("RatingSystem");
+    const ratingSystem = await Rating.deploy();
+    await ratingSystem.waitForDeployment();
+    console.log("    ✅ RatingSystem deployed");
+
     const RewardSystem = await ethers.getContractFactory("BalancedRewardSystem");
     rewardSystem = await RewardSystem.deploy(await token.getAddress()) as unknown as BalancedRewardSystem;
     await rewardSystem.waitForDeployment();
     console.log("    ✅ BalancedRewardSystem deployed");
 
+    const Phase = await ethers.getContractFactory("DecentralizationPhase");
+    phaseTracker = await Phase.deploy(
+      await council.getAddress(),
+      await timelockAccount.getAddress()
+    ) as unknown as DecentralizationPhase;
+    await phaseTracker.waitForDeployment();
+    console.log("    ✅ DecentralizationPhase deployed");
+
     const DeliverySystem = await ethers.getContractFactory("SimpleDeliverySystem");
     deliverySystem = await DeliverySystem.deploy(
       await rewardSystem.getAddress(),
-      await trackingSystem.getAddress()
+      await trackingSystem.getAddress(),
+      await ratingSystem.getAddress(),
+      await phaseTracker.getAddress()
     ) as unknown as SimpleDeliverySystem;
     await deliverySystem.waitForDeployment();
     console.log("    ✅ SimpleDeliverySystem deployed");
 
-    const Phase = await ethers.getContractFactory("DecentralizationPhase");
-    phaseTracker = await Phase.deploy() as unknown as DecentralizationPhase;
-    await phaseTracker.waitForDeployment();
-    console.log("    ✅ DecentralizationPhase deployed");
-
-    // Setup permissions
+    // Setup permissions. SimpleDeliverySystem is not Ownable.
     await token.transferOwnership(await rewardSystem.getAddress());
     await rewardSystem.transferOwnership(await deliverySystem.getAddress());
+    await trackingSystem.transferOwnership(await deliverySystem.getAddress());
+    await ratingSystem.transferOwnership(await deliverySystem.getAddress());
+    await phaseTracker.transferOwnership(await deliverySystem.getAddress());
     console.log("    ✅ Permissions configured\n");
   });
 
@@ -106,7 +127,8 @@ describe("Complete System Integration - Thesis Demonstration", function () {
         pickupLocation,
         "pickup"
       );
-      
+
+      await waitSeconds(61);
       await deliverySystem.connect(driver1).addDeliveryCheckpoint(
         deliveryId,
         transitLocation,
@@ -126,6 +148,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       
       const balanceBefore = await token.balanceOf(driver1Address);
       
+      await waitSeconds(600);
       await expect(
         deliverySystem.completeDelivery(deliveryId, rating)
       ).to.emit(deliverySystem, "DeliveryCompleted");
@@ -158,6 +181,8 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       const deliveryId = ethers.keccak256(ethers.toUtf8Bytes("economic-test"));
       const fiatAmount = 1000; // $10.00
 
+      const feesBefore = (await deliverySystem.getPlatformStats()).feesCollected;
+
       // Create and complete delivery
       await deliverySystem.connect(customer1).createDelivery(
         deliveryId,
@@ -166,11 +191,12 @@ describe("Complete System Integration - Thesis Demonstration", function () {
         fiatAmount
       );
 
+      await waitSeconds(600);
       await deliverySystem.completeDelivery(deliveryId, 5);
 
-      // Check platform fee
+      // Check platform fee for this delivery. feesCollected is cumulative.
       const stats = await deliverySystem.getPlatformStats();
-      const platformFee = Number(stats.feesCollected);
+      const platformFee = Number(stats.feesCollected - feesBefore);
       const feePercent = Number(stats.feePercent);
 
       expect(feePercent).to.equal(2);
@@ -202,6 +228,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       // Track driver balance before
       const balanceBefore = await token.balanceOf(driver1Address);
 
+      await waitSeconds(600);
       await deliverySystem.completeDelivery(deliveryId, 5);
 
       const balanceAfter = await token.balanceOf(driver1Address);
@@ -251,6 +278,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
   describe("Complete Thesis Demonstration Scenarios", function () {
     it("Scenario 1: Diverse driver earns maximum rewards", async function () {
       console.log("\n    📊 Thesis Scenario 1: Diverse Driver\n");
+      await waitSeconds(24 * 60 * 60);
 
       const deliveries = [
         { id: "diverse-1", distance: 3000, rating: 5, type: "short" },
@@ -278,6 +306,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
         }
 
         const balBefore = await token.balanceOf(driver1Address);
+        await waitSeconds(600);
         await deliverySystem.completeDelivery(delId, del.rating);
         const balAfter = await token.balanceOf(driver1Address);
         
@@ -303,17 +332,14 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       const deliveryId = ethers.keccak256(ethers.toUtf8Bytes("gaming-attempt"));
 
       // Create very short delivery (would be profitable spam if allowed)
-      await deliverySystem.connect(customer1).createDelivery(
-        deliveryId,
-        driver1Address,
-        400, // Only 400m (below 500m minimum)
-        500
-      );
-
-      // Attempt to complete should fail
       await expect(
-        deliverySystem.completeDelivery(deliveryId, 5)
-      ).to.be.revertedWith("BalancedReward: Distance too short");
+        deliverySystem.connect(customer1).createDelivery(
+          deliveryId,
+          driver1Address,
+          400, // Only 400m (below 500m minimum)
+          500
+        )
+      ).to.be.revertedWith("DeliverySystem: Distance too short (min 500m)");
 
       console.log("    ✅ Spam delivery prevented (< 500m rejected)\n");
     });
@@ -339,6 +365,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       );
 
       // Complete
+      await waitSeconds(600);
       await deliverySystem.completeDelivery(deliveryId, 5);
 
       // ANYONE can query all information (transparency!)
@@ -377,6 +404,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
         await ethers.provider.send("evm_increaseTime", [600]);
         await ethers.provider.send("evm_mine", []);
 
+        await waitSeconds(600);
         await deliverySystem.completeDelivery(delId, 4 + (i % 2)); // Ratings 4-5
       }
 
@@ -427,6 +455,7 @@ describe("Complete System Integration - Thesis Demonstration", function () {
       console.log(`       addCheckpoint: ${checkpointReceipt?.gasUsed} gas`);
 
       // Measure completeDelivery (includes reward calculation)
+      await waitSeconds(600);
       const completeTx = await deliverySystem.completeDelivery(deliveryId, 5);
       const completeReceipt = await completeTx.wait();
       console.log(`       completeDelivery: ${completeReceipt?.gasUsed} gas`);

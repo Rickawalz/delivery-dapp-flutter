@@ -13,12 +13,18 @@ import { DecentralizationPhase } from "../typechain-types/contracts/governance/D
 describe("DecentralizationPhase - Thesis Framework", function () {
   let phaseTracker: DecentralizationPhase;
   let owner: Signer;
+  let customerAddress: string;
 
   beforeEach(async function () {
-    [owner] = await ethers.getSigners();
+    const [deployer, council, timelockAccount] = await ethers.getSigners();
+    owner = deployer;
+    customerAddress = await deployer.getAddress();
 
     const Phase = await ethers.getContractFactory("DecentralizationPhase");
-    phaseTracker = await Phase.deploy() as unknown as DecentralizationPhase;
+    phaseTracker = await Phase.deploy(
+      await council.getAddress(),
+      await timelockAccount.getAddress()
+    ) as unknown as DecentralizationPhase;
     await phaseTracker.waitForDeployment();
   });
 
@@ -45,7 +51,7 @@ describe("DecentralizationPhase - Thesis Framework", function () {
       const driver = await (await ethers.getSigners())[1].getAddress();
       
       // Record delivery
-      await phaseTracker.recordDelivery(driver, 1000);
+      await phaseTracker.recordDelivery(driver, customerAddress, 1000);
       
       expect(await phaseTracker.totalDeliveries()).to.equal(1);
       expect(await phaseTracker.uniqueDrivers()).to.equal(1);
@@ -55,13 +61,13 @@ describe("DecentralizationPhase - Thesis Framework", function () {
       const [_, driver1, driver2] = await ethers.getSigners();
       
       // Driver 1 completes 2 deliveries
-      await phaseTracker.recordDelivery(await driver1.getAddress(), 1000);
-      await phaseTracker.recordDelivery(await driver1.getAddress(), 1200);
+      await phaseTracker.recordDelivery(await driver1.getAddress(), customerAddress, 1000);
+      await phaseTracker.recordDelivery(await driver1.getAddress(), customerAddress, 1200);
       
       expect(await phaseTracker.uniqueDrivers()).to.equal(1); // Still 1 unique
       
       // Driver 2 completes delivery
-      await phaseTracker.recordDelivery(await driver2.getAddress(), 1000);
+      await phaseTracker.recordDelivery(await driver2.getAddress(), customerAddress, 1000);
       
       expect(await phaseTracker.uniqueDrivers()).to.equal(2); // Now 2 unique
     });
@@ -72,14 +78,14 @@ describe("DecentralizationPhase - Thesis Framework", function () {
       
       // Complete 5000 deliveries (50% of milestone)
       for (let i = 0; i < 100; i++) {
-        await phaseTracker.recordDelivery(driver, 1000);
+        await phaseTracker.recordDelivery(driver, customerAddress, 1000);
       }
 
       const progress = await phaseTracker.getProgress();
       
       // Progress should be proportional
       expect(progress.deliveryProgress).to.equal(1); // 100/10000 = 1%
-      expect(progress.driverProgress).to.equal(100); // 1/100 drivers = 100%
+      expect(progress.driverProgress).to.equal(1); // 1/100 drivers = 1%
     });
   });
 
@@ -107,7 +113,7 @@ describe("DecentralizationPhase - Thesis Framework", function () {
       // Try to advance should fail
       await expect(
         phaseTracker.advancePhase()
-      ).to.be.revertedWith("DecentralizationPhase: Milestones not met for Hybrid");
+      ).to.be.revertedWith("DecentralizationPhase: Milestones not met");
     });
 
     it("Should provide progress information for thesis UI", async function () {

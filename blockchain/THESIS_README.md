@@ -84,17 +84,28 @@
 
 ---
 
-### 5. DecentralizationPhase.sol (~170 lines)
-**Purpose:** Milestone-based governance transition tracking
+### 5. DecentralizationPhase.sol
+**Purpose:** Code-enforced handover of the active controller
 
-**Academic Contribution:** Framework for progressive decentralization - Addresses RQ2
+**Academic Contribution:** Progressive decentralization. The founder cannot block, delay, or skip the handover once the milestones are met.
 
-**Key Features:**
-- Three phases: Bootstrap → Hybrid → FullDAO
-- Milestone tracking (deliveries, drivers, stability)
-- Progress calculation for UI display
+**Controllers:**
+- Bootstrap: the founder, the address that deployed this contract
+- Hybrid: `hybridCouncil` (10,000 deliveries, 100 drivers, 180 days, 30 stable days)
+- FullDAO: `daoTimelock`, an OpenZeppelin `TimelockController` (1,000,000 deliveries, 10,000 drivers, $10,000,000 GMV, 90 stable days)
+
+`recordDelivery` advances at most one phase in the same transaction when the milestones are met. Anyone may also call `advancePhase()` after that point. The phase never moves backward.
+
+**Incidents:** at most one every 7 days, and at most 3 per phase. The per-phase counter resets on advance. Recording an incident resets the stability clock.
 
 **Location:** `contracts/governance/DecentralizationPhase.sol`
+
+### 6. RLEGovernor.sol
+**Purpose:** Token voting executed through the timelock
+
+In FullDAO, `currentController()` is the timelock. RLE holders who have delegated their votes propose, vote, queue, and execute calls on `SimpleDeliverySystem`. That is how the fee, reward rate, disputes, and incidents are governed. Quorum is 4 percent.
+
+**Location:** `contracts/governance/RLEGovernor.sol`
 
 ---
 
@@ -169,6 +180,14 @@ The deployment script creates 4 test deliveries demonstrating:
 6. ⏸️ **Writing** - Complete thesis chapters (Week 16-18)
 
 ---
+
+## Governance and limits
+
+`SimpleDeliverySystem` is not upgradeable and is not `Ownable`. During Bootstrap the founder or the customer may complete a delivery. After Bootstrap only the customer may complete it. The active controller resolves disputes. In FullDAO that controller is the timelock, so those calls go through `RLEGovernor`.
+
+The contracts have no proxy. Replacing one would require a governance-approved redeployment, and that new deployment does not replace the contracts already on chain.
+
+Customers confirm their own deliveries. Colluding accounts, including Sybil wallets, could create self-dealing deliveries to earn RLE and inflate the milestone metrics. The per-address reward limits (10 minutes between deliveries, 50 per day, 500 meter minimum, 30 kilometer cap) slow that activity. They do not prevent it across many addresses.
 
 ## For Thesis Committee
 

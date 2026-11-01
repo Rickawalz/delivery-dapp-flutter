@@ -172,13 +172,14 @@ describe("BalancedRewardSystem - Thesis Tests", function () {
     });
 
     it("Should cap distance rewards at 30km (prevents unrealistic claims)", async function () {
-      // 100km delivery gets capped at 30km for points
+      // 100km is capped at 30km for the kilometer count, then the over-30km tier
+      // applies 70% instead of the 80% used at exactly 30km.
       const preview = await rewardSystem.previewReward(driver1Address, 100000, 5);
-      
-      // Should be same as 30km delivery
       const preview30km = await rewardSystem.previewReward(driver1Address, 30000, 5);
-      
-      expect(preview.distancePoints).to.equal(preview30km.distancePoints);
+
+      expect(preview30km.distancePoints).to.equal(240);
+      expect(preview.distancePoints).to.equal(210);
+      expect(preview.distancePoints).to.be.lessThan(preview30km.distancePoints);
     });
   });
 
@@ -286,8 +287,8 @@ describe("BalancedRewardSystem - Thesis Tests", function () {
 
   describe("Driver Statistics Tracking (Thesis Metrics)", function () {
     it("Should track driver statistics for thesis analysis", async function () {
-      // Process multiple deliveries
-      await rewardSystem.processReward(driver1Address, 5000, 5);
+      // Process multiple deliveries. 3km is short; 5km is already the medium tier.
+      await rewardSystem.processReward(driver1Address, 3000, 5);
       
       await ethers.provider.send("evm_increaseTime", [600]);
       await ethers.provider.send("evm_mine", []);
@@ -374,13 +375,16 @@ describe("BalancedRewardSystem - Thesis Tests", function () {
 
   describe("Multiple Drivers (Fairness Analysis)", function () {
     it("Should treat different drivers fairly with same performance", async function () {
-      // Both drivers do identical delivery
-      const reward1 = await rewardSystem.processReward(driver1Address, 10000, 5);
+      const before1 = await token.balanceOf(driver1Address);
+      await rewardSystem.processReward(driver1Address, 10000, 5);
+      const reward1 = (await token.balanceOf(driver1Address)) - before1;
       
       await ethers.provider.send("evm_increaseTime", [600]);
       await ethers.provider.send("evm_mine", []);
       
-      const reward2 = await rewardSystem.processReward(driver2Address, 10000, 5);
+      const before2 = await token.balanceOf(driver2Address);
+      await rewardSystem.processReward(driver2Address, 10000, 5);
+      const reward2 = (await token.balanceOf(driver2Address)) - before2;
       
       // Should earn exactly the same (fair algorithm)
       expect(reward1).to.equal(reward2);

@@ -46,10 +46,12 @@
 - Packed delivery struct (70% gas savings)
 - **Status:** COMPLETE & TESTED
 
-#### ✅ **DecentralizationPhase.sol** (170 lines) - Addresses RQ2
-- Milestone-based governance framework
-- Progress tracking and calculation
-- Three phases: Bootstrap → Hybrid → FullDAO
+#### ✅ **DecentralizationPhase.sol** - Addresses RQ2
+- Bootstrap founder, Hybrid council, FullDAO timelock
+- Automatic and permissionless advancement; the phase cannot move backward
+- Incident cooldown of 7 days and a cap of 3 per phase
+- FullDAO parameter changes go through `RLEGovernor` and the timelock
+- Contracts are not upgradeable
 - **Status:** COMPLETE & TESTED
 
 ---
